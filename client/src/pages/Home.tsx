@@ -250,7 +250,6 @@ export default function Home() {
       <footer className="site-footer">
         <a className="brand" href="#top"><img src={gateLogo} alt="CivicPath Gate logo placeholder" /><span>CivicPath</span></a>
         <p>Strategic project readiness for regional councils.</p>
-        <p className="footer-note">Initial marketing site draft · The Gate is a placeholder brand mark.</p>
       </footer>
     </main>
   );

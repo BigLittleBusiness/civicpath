@@ -192,7 +192,6 @@ h2 { margin-bottom: 0; font-size: clamp(36px, 4.25vw, 60px); line-height: 1.07; 
 .final-section > p:not(.eyebrow) { max-width: 580px; margin: 0 auto 30px; color: var(--muted); }
 .site-footer { padding: 42px max(28px, calc((100vw - 1280px)/2 + 28px)); display: grid; grid-template-columns: 1fr auto; gap: 10px 26px; background: var(--river-deep); color: var(--white); }
 .site-footer > p { margin: 0; color: rgba(255,253,250,.64); font-size: 13px; align-self: center; }
-.site-footer .footer-note { grid-column: 1 / -1; margin-top: 22px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,.15); color: rgba(255,253,250,.42); font-size: 11px; }
 
 @media (max-width: 900px) {
   .hero { min-height: 720px; }
