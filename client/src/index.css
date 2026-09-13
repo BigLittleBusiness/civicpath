@@ -154,11 +154,12 @@ h2 { margin-bottom: 0; font-size: clamp(36px, 4.25vw, 60px); line-height: 1.07; 
 .optional-link i { color: #e8decd; font-size: 26px; font-style: normal; letter-spacing: -.15em; }
 
 .proof-section { min-height: 590px; display: grid; grid-template-columns: minmax(0,.78fr) minmax(0,1.22fr); background: var(--signal); }
-.proof-section, .pricing-section, .final-section { position: relative; }
+.proof-section, .pricing-section, .faq-section, .final-section { position: relative; }
 .route-badge { position: absolute; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--signal); font-family: "Source Serif 4", serif; font-size: 17px; }
 .route-badge i { width: 1px; height: 37px; background: currentColor; }
 .proof-route { left: max(28px, calc((100vw - 1280px)/2 + 28px)); top: 26px; color: #b8dfca; }
 .pricing-route { left: max(28px, calc((100vw - 1280px)/2 + 28px)); top: 42px; }
+.faq-route { left: max(28px, calc((100vw - 1280px)/2 + 28px)); top: 42px; color: var(--apricot); }
 .final-route { left: max(28px, calc((100vw - 1280px)/2 + 28px)); top: 42px; color: var(--apricot); }
 .proof-photo { min-height: 460px; background-position: center; background-size: cover; filter: saturate(.72) contrast(1.03); }
 .proof-panel { padding: 94px clamp(30px, 8vw, 120px); color: var(--white); }
@@ -184,6 +185,18 @@ h2 { margin-bottom: 0; font-size: clamp(36px, 4.25vw, 60px); line-height: 1.07; 
 .price-block.sand { background: #f7f1e8; }
 .price-block.green { background: #edf6f0; }
 .price-block.slate { background: #eef1ed; }
+
+.faq-section { padding: 116px max(28px, calc((100vw - 1280px)/2 + 28px)); background: #edf0eb; }
+.faq-list { margin: 70px 0 0 74px; border-top: 1px solid var(--line); }
+.faq-item { border-bottom: 1px solid var(--line); }
+.faq-question { width: 100%; padding: 23px 0; display: grid; grid-template-columns: 80px minmax(0, 1fr) 28px; align-items: center; gap: 22px; border: 0; background: transparent; color: var(--river); text-align: left; cursor: pointer; }
+.faq-question:hover { color: var(--signal); }
+.faq-number { color: var(--apricot); font-family: "Source Serif 4", serif; font-size: 20px; }
+.faq-question > span:nth-child(2) { font-size: 20px; font-weight: 600; letter-spacing: -.032em; }
+.faq-toggle { justify-self: end; color: var(--signal); font-family: "Source Serif 4", serif; font-size: 28px; line-height: 1; }
+.faq-answer { max-width: 690px; margin: -2px 50px 23px 102px; color: var(--muted); font-size: 15px; }
+.faq-answer p { margin: 0; }
+.faq-item.is-open .faq-question { padding-bottom: 12px; }
 
 .final-section { padding: 128px max(28px, calc((100vw - 1280px)/2 + 28px)); background: var(--paper); text-align: center; }
 .final-section .section-marker { margin: 0 auto 26px; }
@@ -229,7 +242,7 @@ h2 { margin-bottom: 0; font-size: clamp(36px, 4.25vw, 60px); line-height: 1.07; 
   h1 { font-size: clamp(44px, 13vw, 62px); }
   h2 { font-size: clamp(34px, 10vw, 46px); }
   .statement, .section-intro { grid-template-columns: 36px 1fr; gap: 18px; }
-  .statement, .workflow-section, .modules-section, .pricing-section { padding-top: 76px; padding-bottom: 76px; }
+  .statement, .workflow-section, .modules-section, .pricing-section, .faq-section { padding-top: 76px; padding-bottom: 76px; }
   .section-marker { align-items: flex-start; }
   .section-marker i { height: 34px; }
   .statement-note, .intro-note { grid-column: 2; }
@@ -256,6 +269,10 @@ h2 { margin-bottom: 0; font-size: clamp(36px, 4.25vw, 60px); line-height: 1.07; 
   .price-block { background: transparent !important; }
   .price-name { margin-bottom: 22px; }
   .price-description { min-height: 0; }
+  .faq-list { margin: 45px 0 0; }
+  .faq-question { grid-template-columns: 35px minmax(0, 1fr) 24px; gap: 13px; padding: 19px 0; }
+  .faq-question > span:nth-child(2) { font-size: 18px; line-height: 1.2; }
+  .faq-answer { margin: 0 24px 20px 48px; font-size: 14px; }
   .final-section { padding: 83px 24px; text-align: left; }
   .route-badge { left: 24px; top: 28px; }
   .final-section .section-marker { margin-left: 0; }

@@ -65,8 +65,32 @@ const pricing = [
   },
 ];
 
+const faqs = [
+  {
+    question: "How does procurement begin?",
+    answer: "Each Council follows its own procurement policy. CivicPath starts with a clearly scoped 60-day Council Proof so the first conversation can focus on one real portfolio, a defined outcome and a proportionate path to a longer-term decision.",
+  },
+  {
+    question: "What does implementation involve?",
+    answer: "The Proof is deliberately small. Together, we confirm the project structure, load a representative portfolio, orient the people doing the work and prepare a practical portfolio review. A broader rollout is considered only after the workflow has proven useful.",
+  },
+  {
+    question: "Does CivicPath replace our finance, records or procurement systems?",
+    answer: "No. CivicPath is designed to give teams a clearer view of project readiness, actions, funding pathways, risks and decisions. It complements existing systems rather than attempting to replace them.",
+  },
+  {
+    question: "How does GrantMaestro fit?",
+    answer: "CivicPath stands on its own. Where a Council also wants grant discovery, application coordination and acquittal management, GrantMaestro can be considered as a separate, optional companion product.",
+  },
+  {
+    question: "What will our Council need to provide?",
+    answer: "A nominated project owner, a short list of live projects, relevant priority or plan references, and the people who can clarify the next decision. The starting point is the work already in front of your team—not a lengthy system implementation project.",
+  },
+];
+
 export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   return (
     <main>
@@ -82,6 +106,7 @@ export default function Home() {
           <a href="#workflow" onClick={() => setMenuOpen(false)}>How it works</a>
           <a href="#councils" onClick={() => setMenuOpen(false)}>For councils</a>
           <a href="#pricing" onClick={() => setMenuOpen(false)}>Pricing</a>
+          <a href="#faq" onClick={() => setMenuOpen(false)}>FAQ</a>
           <a className="nav-cta" href="#proof" onClick={() => setMenuOpen(false)}>Explore a Council Proof <span>↗</span></a>
         </nav>
       </header>
@@ -238,9 +263,42 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="faq-section" id="faq">
+        <div className="route-badge faq-route"><span>07</span><i /></div>
+        <div className="section-intro route-section">
+          <div className="section-marker"><span>07</span><i /></div>
+          <div>
+            <p className="eyebrow">Procurement and implementation</p>
+            <h2>A practical place to start, before you commit to anything larger.</h2>
+          </div>
+          <p className="intro-note">The questions regional Council teams commonly need answered before deciding whether CivicPath is a fit.</p>
+        </div>
+        <div className="faq-list">
+          {faqs.map((faq, index) => {
+            const isOpen = openFaq === index;
+            return (
+              <article className={isOpen ? "faq-item is-open" : "faq-item"} key={faq.question}>
+                <button
+                  className="faq-question"
+                  type="button"
+                  onClick={() => setOpenFaq(isOpen ? null : index)}
+                  aria-expanded={isOpen}
+                  aria-controls={`faq-answer-${index}`}
+                >
+                  <span className="faq-number">{String(index + 1).padStart(2, "0")}</span>
+                  <span>{faq.question}</span>
+                  <span className="faq-toggle" aria-hidden="true">{isOpen ? "−" : "+"}</span>
+                </button>
+                {isOpen && <div className="faq-answer" id={`faq-answer-${index}`}><p>{faq.answer}</p></div>}
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
       <section className="final-section route-section">
-        <div className="route-badge final-route"><span>07</span><i /></div>
-        <div className="section-marker"><span>07</span><i /></div>
+        <div className="route-badge final-route"><span>08</span><i /></div>
+        <div className="section-marker"><span>08</span><i /></div>
         <p className="eyebrow">A more dependable route forward</p>
         <h2>Make the next project conversation more useful.</h2>
         <p>See the portfolio, understand the blockers and give your team a shared route toward a fundable, deliverable outcome.</p>
