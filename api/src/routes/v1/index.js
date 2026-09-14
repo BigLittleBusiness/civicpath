@@ -7,10 +7,12 @@ import { listGrants, createGrant } from '../../controllers/grantController.js';
 import { listPriorities, createPriority, listPathways, createPathway, listWorkItems, createWorkItem, assessReadiness, listEvidence, createEvidence } from '../../controllers/portfolioController.js';
 import { resetDemo } from '../../controllers/demoController.js';
 import { previewImport, commitImport } from '../../controllers/importController.js';
+import { adminRouter } from './admin.js';
 
 export const v1Router = Router();
 v1Router.get('/health', (_req, res) => res.json({ data: { service: 'civicpath-api', status: 'healthy' } }));
 v1Router.use('/auth', authRouter);
+v1Router.use('/admin', requireAuth, tenantScope, adminRouter);
 v1Router.use(requireAuth, tenantScope);
 v1Router.get('/dashboard/overview', overview);
 v1Router.get('/priorities', listPriorities);

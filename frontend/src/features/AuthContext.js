@@ -21,7 +21,7 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => { refresh(); }, []);
-  const value = useMemo(() => ({ user, state, refresh, async signIn(credentials) { const response = await api.post('/auth/login', credentials); setUser(response.data.data.user); setState('authenticated'); return response.data.data.user; }, async signOut() { await api.post('/auth/logout'); setUser(null); setState('anonymous'); } }), [user, state]);
+  const value = useMemo(() => ({ user, state, refresh, async signIn(credentials) { const response = await api.post('/auth/login', credentials); if (response.data.data.mfaRequired) { setUser(null); setState('mfa_pending'); return response.data.data; } setUser(response.data.data.user); setState('authenticated'); return response.data.data.user; }, async completeMfa(path, payload) { const response = await api.post(path, payload); setUser(response.data.data.user); setState('authenticated'); return response.data.data; }, async signOut() { await api.post('/auth/logout'); setUser(null); setState('anonymous'); } }), [user, state]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
@@ -30,4 +30,3 @@ export function useAuth() {
   if (!context) throw new Error('useAuth must be used inside AuthProvider');
   return context;
 }
-

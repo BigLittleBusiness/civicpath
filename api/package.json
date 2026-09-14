@@ -8,7 +8,8 @@
     "dev": "nodemon src/index.js",
     "db:migrate": "node db/migrations/001_initial_schema.mjs",
     "db:seed-demo": "node db/seeds/001_demo_workspace.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "test:system-admin-mfa": "node tests/systemAdminMfaFlow.mjs"
   },
   "keywords": [],
   "author": "",
@@ -38,8 +39,10 @@
     "nodemailer": "^6.10.0",
     "openai": "^6.45.0",
     "pug": "^3.0.3",
+    "qrcode": "^1.5.4",
     "randomstring": "^1.3.1",
     "sequelize": "^6.37.5",
+    "speakeasy": "^2.0.0",
     "stripe": "^18.0.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"

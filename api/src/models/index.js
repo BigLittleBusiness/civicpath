@@ -8,7 +8,7 @@ export const Organization = sequelize.define('Organization', {
   name: { type: DataTypes.STRING(160), allowNull: false },
   slug: { type: DataTypes.STRING(100), allowNull: false, unique: true },
   country: { type: DataTypes.ENUM('AU', 'NZ'), allowNull: false, defaultValue: 'AU' },
-  organisationType: { type: DataTypes.ENUM('council', 'joint_organisation', 'partner', 'demo'), allowNull: false, defaultValue: 'council' },
+  organisationType: { type: DataTypes.ENUM('council', 'joint_organisation', 'partner', 'demo', 'platform'), allowNull: false, defaultValue: 'council' },
   planCode: { type: DataTypes.STRING(40), allowNull: false, defaultValue: 'proof' },
   isDemo: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   status: { type: DataTypes.ENUM('trial', 'active', 'suspended'), allowNull: false, defaultValue: 'trial' },
@@ -24,6 +24,12 @@ export const User = sequelize.define('User', {
   role: { type: DataTypes.ENUM('platform_admin', 'org_admin', 'portfolio_manager', 'contributor', 'executive'), allowNull: false, defaultValue: 'contributor' },
   status: { type: DataTypes.ENUM('invited', 'active', 'disabled'), allowNull: false, defaultValue: 'invited' },
   lastLoginAt: { type: DataTypes.DATE, allowNull: true },
+  mfaRequired: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  mfaEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  mfaSecretEncrypted: { type: DataTypes.JSON, allowNull: true },
+  mfaRecoveryCodes: { type: DataTypes.JSON, allowNull: true },
+  mfaEnrolledAt: { type: DataTypes.DATE, allowNull: true },
+  mfaLastVerifiedAt: { type: DataTypes.DATE, allowNull: true },
 }, { ...standard, indexes: [{ unique: true, fields: ['organization_id', 'email'] }] });
 
 export const ProductPlan = sequelize.define('ProductPlan', {
@@ -60,6 +66,55 @@ export const IntegrationConnection = sequelize.define('IntegrationConnection', {
   encryptedConfiguration: { type: DataTypes.TEXT, allowNull: true },
   lastSyncedAt: { type: DataTypes.DATE, allowNull: true },
 }, { ...standard, indexes: [{ unique: true, fields: ['organization_id', 'provider'] }] });
+
+export const PlatformSetting = sequelize.define('PlatformSetting', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  settingKey: { type: DataTypes.STRING(100), allowNull: false, unique: true },
+  configuration: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+  encryptedPayload: { type: DataTypes.JSON, allowNull: true },
+  updatedBy: { type: DataTypes.UUID, allowNull: true },
+}, standard);
+
+export const SupportCase = sequelize.define('SupportCase', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  requesterId: { type: DataTypes.UUID, allowNull: true },
+  title: { type: DataTypes.STRING(240), allowNull: false },
+  category: { type: DataTypes.ENUM('access', 'billing', 'data', 'grant_lifecycle', 'portfolio', 'technical', 'other'), allowNull: false, defaultValue: 'other' },
+  priority: { type: DataTypes.ENUM('low', 'normal', 'high', 'urgent'), allowNull: false, defaultValue: 'normal' },
+  status: { type: DataTypes.ENUM('new', 'in_progress', 'waiting_customer', 'resolved', 'closed'), allowNull: false, defaultValue: 'new' },
+  summary: { type: DataTypes.TEXT, allowNull: true },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  resolvedAt: { type: DataTypes.DATE, allowNull: true },
+}, standard);
+
+export const CustomerContact = sequelize.define('CustomerContact', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  name: { type: DataTypes.STRING(160), allowNull: false },
+  email: { type: DataTypes.STRING(191), allowNull: false, validate: { isEmail: true } },
+  title: { type: DataTypes.STRING(160), allowNull: true },
+  contactType: { type: DataTypes.ENUM('primary', 'billing', 'technical', 'executive', 'other'), allowNull: false, defaultValue: 'primary' },
+  isAuthorised: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  createdBy: { type: DataTypes.UUID, allowNull: true },
+}, standard);
+
+export const CustomerNote = sequelize.define('CustomerNote', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  authorId: { type: DataTypes.UUID, allowNull: true },
+  body: { type: DataTypes.TEXT, allowNull: false },
+  visibility: { type: DataTypes.ENUM('internal', 'handover'), allowNull: false, defaultValue: 'internal' },
+}, standard);
+
+export const TenantStateEvent = sequelize.define('TenantStateEvent', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  fromStatus: { type: DataTypes.STRING(40), allowNull: false },
+  toStatus: { type: DataTypes.STRING(40), allowNull: false },
+  reason: { type: DataTypes.TEXT, allowNull: false },
+  actorId: { type: DataTypes.UUID, allowNull: true },
+}, standard);
 
 export const Priority = sequelize.define('Priority', {
   id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
@@ -180,6 +235,16 @@ Subscription.belongsTo(Organization, { foreignKey: 'organizationId' });
 Subscription.belongsTo(ProductPlan, { foreignKey: 'planId' });
 Organization.hasMany(IntegrationConnection, { foreignKey: 'organizationId' });
 IntegrationConnection.belongsTo(Organization, { foreignKey: 'organizationId' });
+Organization.hasMany(SupportCase, { foreignKey: 'organizationId' });
+SupportCase.belongsTo(Organization, { foreignKey: 'organizationId' });
+Organization.hasMany(CustomerContact, { foreignKey: 'organizationId' });
+CustomerContact.belongsTo(Organization, { foreignKey: 'organizationId' });
+Organization.hasMany(CustomerNote, { foreignKey: 'organizationId' });
+CustomerNote.belongsTo(Organization, { foreignKey: 'organizationId' });
+CustomerNote.belongsTo(User, { as: 'author', foreignKey: 'authorId' });
+Organization.hasMany(TenantStateEvent, { foreignKey: 'organizationId' });
+TenantStateEvent.belongsTo(Organization, { foreignKey: 'organizationId' });
+TenantStateEvent.belongsTo(User, { as: 'actor', foreignKey: 'actorId' });
 Organization.hasMany(Priority, { foreignKey: 'organizationId' });
 Organization.hasMany(CivicProject, { foreignKey: 'organizationId' });
 Priority.hasMany(CivicProject, { foreignKey: 'priorityId' });
@@ -199,4 +264,4 @@ WorkItem.belongsTo(User, { as: 'owner', foreignKey: 'ownerId' });
 CivicProject.hasMany(EvidenceItem, { foreignKey: 'projectId' });
 Grant.hasMany(EvidenceItem, { foreignKey: 'grantId' });
 
-export const models = { Organization, User, ProductPlan, Subscription, IntegrationConnection, Priority, CivicProject, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, AuditLog };
+export const models = { Organization, User, ProductPlan, Subscription, IntegrationConnection, PlatformSetting, SupportCase, CustomerContact, CustomerNote, TenantStateEvent, Priority, CivicProject, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, AuditLog };

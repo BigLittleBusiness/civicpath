@@ -1,0 +1,18 @@
+import { Router } from 'express';
+import { requireRoles, requireStepUp } from '../../middleware/auth.js';
+import { platformOverview, listCustomers, listSupportCases, updateSupportCase, getStripeSettings, saveStripeSettings, listPlans } from '../../controllers/adminController.js';
+import { customer360, changeTenantState, addCustomerContact, addCustomerNote } from '../../controllers/customerAdminController.js';
+
+export const adminRouter = Router();
+adminRouter.use(requireRoles('platform_admin'));
+adminRouter.get('/overview', platformOverview);
+adminRouter.get('/customers', listCustomers);
+adminRouter.get('/customers/:customerId', customer360);
+adminRouter.patch('/customers/:customerId/status', requireStepUp, changeTenantState);
+adminRouter.post('/customers/:customerId/contacts', addCustomerContact);
+adminRouter.post('/customers/:customerId/notes', addCustomerNote);
+adminRouter.get('/support-cases', listSupportCases);
+adminRouter.patch('/support-cases/:caseId', updateSupportCase);
+adminRouter.get('/plans', listPlans);
+adminRouter.get('/billing/stripe', getStripeSettings);
+adminRouter.put('/billing/stripe', requireStepUp, saveStripeSettings);

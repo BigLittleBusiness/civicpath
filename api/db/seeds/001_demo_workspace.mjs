@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { sequelize } from '../../src/config/database.js';
-import { Organization, User, ProductPlan, Subscription, Priority, CivicProject, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem } from '../../src/models/index.js';
+import { Organization, User, ProductPlan, Subscription, Priority, CivicProject, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, CustomerContact, CustomerNote, TenantStateEvent } from '../../src/models/index.js';
 
 const demo = { name: 'CivicPath Demonstration Council', slug: 'civicpath-demo', country: 'AU', organisationType: 'demo', planCode: 'core', isDemo: true, status: 'active' };
 
@@ -8,8 +8,15 @@ try {
   await sequelize.authenticate();
   await sequelize.sync();
   const [organisation] = await Organization.findOrCreate({ where: { slug: demo.slug }, defaults: demo });
+  const [platformOrganisation] = await Organization.findOrCreate({ where: { slug: 'civicpath-platform' }, defaults: { name: 'CivicPath Platform', slug: 'civicpath-platform', country: 'AU', organisationType: 'platform', planCode: 'internal', status: 'active' } });
   const passwordHash = await bcrypt.hash('CivicPathDemo2026!', 12);
   const [manager] = await User.findOrCreate({ where: { organizationId: organisation.id, email: 'demo@civicpath.com.au' }, defaults: { organizationId: organisation.id, email: 'demo@civicpath.com.au', firstName: 'Jordan', lastName: 'Reid', passwordHash, role: 'org_admin', status: 'active' } });
+  const [platformAdmin] = await User.findOrCreate({ where: { organizationId: platformOrganisation.id, email: 'admin@civicpath.com.au' }, defaults: { organizationId: platformOrganisation.id, email: 'admin@civicpath.com.au', firstName: 'System', lastName: 'Administrator', passwordHash: await bcrypt.hash('CivicPathAdmin2026!', 12), role: 'platform_admin', status: 'active', mfaRequired: true } });
+  await platformAdmin.update({ mfaRequired: true });
+  await CustomerContact.findOrCreate({ where: { organizationId: organisation.id, email: 'chief.executive@democouncil.nsw.gov.au' }, defaults: { organizationId: organisation.id, name: 'Morgan Ellis', email: 'chief.executive@democouncil.nsw.gov.au', title: 'Chief Executive Officer', contactType: 'executive', isAuthorised: true, createdBy: platformAdmin.id } });
+  await CustomerContact.findOrCreate({ where: { organizationId: organisation.id, email: 'finance@democouncil.nsw.gov.au' }, defaults: { organizationId: organisation.id, name: 'Taylor Green', email: 'finance@democouncil.nsw.gov.au', title: 'Manager Corporate Services', contactType: 'billing', isAuthorised: true, createdBy: platformAdmin.id } });
+  await CustomerNote.findOrCreate({ where: { organizationId: organisation.id, body: 'Illustrative Customer 360° note. Replace all demonstration records when a live Council workspace is created.' }, defaults: { organizationId: organisation.id, authorId: platformAdmin.id, body: 'Illustrative Customer 360° note. Replace all demonstration records when a live Council workspace is created.', visibility: 'internal' } });
+  await TenantStateEvent.findOrCreate({ where: { organizationId: organisation.id, fromStatus: 'trial', toStatus: 'active', reason: 'Illustrative demonstration tenant activation.' }, defaults: { organizationId: organisation.id, fromStatus: 'trial', toStatus: 'active', reason: 'Illustrative demonstration tenant activation.', actorId: platformAdmin.id } });
   const [corePlan] = await ProductPlan.findOrCreate({ where: { code: 'civicpath-core' }, defaults: { code: 'civicpath-core', name: 'CivicPath Core', product: 'civicpath', annualPriceAud: 5000, workflowUserLimit: 8, activeProjectLimit: 75, activeGrantLimit: 0, features: { projectPortfolio: true, fundingPathways: true, reporting: true } } });
   await Subscription.findOrCreate({ where: { organizationId: organisation.id, planId: corePlan.id }, defaults: { organizationId: organisation.id, planId: corePlan.id, status: 'active', entitlements: { civicpathCore: true, grantLifecycle: true, demo: true } } });
   const priorities = await Promise.all([

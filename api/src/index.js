@@ -17,6 +17,7 @@ app.use(cors({ origin: env.frontendUrl, credentials: true, methods: ['GET', 'POS
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use('/v1/auth/login', rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many sign-in attempts. Please try again later.' } }));
+app.use('/v1/auth/mfa', rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many authenticator attempts. Please try again later.' } }));
 app.use('/v1', rateLimit({ windowMs: 15 * 60 * 1000, limit: 400, standardHeaders: 'draft-8', legacyHeaders: false }), v1Router);
 app.use(notFound);
 app.use(errorHandler);

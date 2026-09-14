@@ -12,6 +12,8 @@ source "$HOME/.nvm/nvm.sh"
 cd "$APP_DIR/api"
 npm ci --omit=dev
 npm run db:migrate
+node db/migrations/002_system_admin_foundation.mjs
+node db/migrations/003_customer_360_and_mfa.mjs
 
 cd "$APP_DIR/frontend"
 npm ci --legacy-peer-deps
@@ -22,4 +24,3 @@ pm2 startOrReload infra/ecosystem.config.cjs --env production
 pm2 save
 
 echo "CivicPath application build complete. Install the reviewed Nginx configuration and configure TLS before exposing app.civicpath.com.au."
-

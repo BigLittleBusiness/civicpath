@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const requiredInProduction = ['JWT_SECRET', 'DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'FRONTEND_URL'];
+const requiredInProduction = ['JWT_SECRET', 'DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'FRONTEND_URL', 'PLATFORM_ENCRYPTION_KEY'];
 
 if (process.env.NODE_ENV === 'production') {
   const missing = requiredInProduction.filter((key) => !process.env[key]);
@@ -25,6 +25,8 @@ export const env = Object.freeze({
     ssl: process.env.DB_SSL === 'true',
   },
   demoMode: process.env.DEMO_MODE === 'true',
+  platformEncryptionKey: process.env.PLATFORM_ENCRYPTION_KEY || '',
+  mfaIssuer: process.env.MFA_ISSUER || 'CivicPath',
+  privilegedActionMinutes: Number(process.env.PRIVILEGED_ACTION_MINUTES || 10),
   isProduction: process.env.NODE_ENV === 'production',
 });
-
