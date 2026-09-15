@@ -9,7 +9,7 @@ Create a Binary Lane Ubuntu instance with MySQL 8, Nginx, Node 22 through NVM, P
 1. Clone the private `BigLittleBusiness/civicpath` repository to `/var/www/civicpath` and deploy the `app` branch.
 2. Create a new MySQL database and a least-privilege database user for CivicPath; do not reuse GrantMaestro credentials or tables.
 3. Create `/var/www/civicpath/api/.env` with `NODE_ENV=production`, a unique high-entropy `JWT_SECRET`, a distinct high-entropy `PLATFORM_ENCRYPTION_KEY`, the production database settings, `FRONTEND_URL=https://app.civicpath.com.au`, `COOKIE_DOMAIN=app.civicpath.com.au`, `MFA_ISSUER=CivicPath`, and `PRIVILEGED_ACTION_MINUTES=10` (or another explicitly approved short duration).
-4. From `/var/www/civicpath/api`, run `node db/migrations/002_system_admin_foundation.mjs` and `node db/migrations/003_customer_360_and_mfa.mjs`. These migrations are idempotent; retain them in the deployment record.
+4. From `/var/www/civicpath/api`, run `node db/migrations/002_system_admin_foundation.mjs`, `node db/migrations/003_customer_360_and_mfa.mjs` and `node db/migrations/004_structured_selectors.mjs`. These migrations are idempotent; retain them in the deployment record.
 5. Run `infra/deploy-binarylane.sh`.
 6. Copy and review `infra/nginx-civicpath.conf`, then enable it in Nginx.
 7. Issue a TLS certificate after DNS resolves. Redirect port 80 to HTTPS and verify cookies, login, API proxying, deep links and security headers over HTTPS.

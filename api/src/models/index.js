@@ -12,6 +12,7 @@ export const Organization = sequelize.define('Organization', {
   planCode: { type: DataTypes.STRING(40), allowNull: false, defaultValue: 'proof' },
   isDemo: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   status: { type: DataTypes.ENUM('trial', 'active', 'suspended'), allowNull: false, defaultValue: 'trial' },
+  defaultCurrency: { type: DataTypes.CHAR(3), allowNull: false, defaultValue: 'AUD', validate: { isIn: [['AUD', 'NZD']] } },
 }, standard);
 
 export const User = sequelize.define('User', {
@@ -116,6 +117,45 @@ export const TenantStateEvent = sequelize.define('TenantStateEvent', {
   actorId: { type: DataTypes.UUID, allowNull: true },
 }, standard);
 
+export const SelectorOptionSet = sequelize.define('SelectorOptionSet', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: true },
+  code: { type: DataTypes.STRING(100), allowNull: false },
+  label: { type: DataTypes.STRING(160), allowNull: false },
+  description: { type: DataTypes.STRING(500), allowNull: true },
+  appliesTo: { type: DataTypes.ENUM('organization', 'project', 'readiness_assessment', 'funding_pathway', 'grant', 'work_item', 'evidence_item', 'project_constraint'), allowNull: false },
+  selectionMode: { type: DataTypes.ENUM('single', 'multi'), allowNull: false, defaultValue: 'single' },
+  maxSelections: { type: DataTypes.INTEGER, allowNull: true, validate: { min: 1, max: 50 } },
+  allowsOther: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  scope: { type: DataTypes.ENUM('platform', 'tenant'), allowNull: false, defaultValue: 'platform' },
+  status: { type: DataTypes.ENUM('active', 'deprecated', 'retired'), allowNull: false, defaultValue: 'active' },
+  metadata: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+}, { ...standard, indexes: [{ unique: true, fields: ['organization_id', 'code'] }, { fields: ['applies_to', 'status'] }] });
+
+export const SelectorOption = sequelize.define('SelectorOption', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  optionSetId: { type: DataTypes.UUID, allowNull: false },
+  organizationId: { type: DataTypes.UUID, allowNull: true },
+  code: { type: DataTypes.STRING(100), allowNull: false },
+  label: { type: DataTypes.STRING(160), allowNull: false },
+  description: { type: DataTypes.STRING(500), allowNull: true },
+  sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  isOther: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  isCustom: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  status: { type: DataTypes.ENUM('active', 'deprecated', 'retired'), allowNull: false, defaultValue: 'active' },
+  value: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+}, { ...standard, indexes: [{ unique: true, fields: ['option_set_id', 'organization_id', 'code'] }, { fields: ['option_set_id', 'status', 'sort_order'] }] });
+
+export const OrganizationSelectorOptionOverride = sequelize.define('OrganizationSelectorOptionOverride', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  optionId: { type: DataTypes.UUID, allowNull: false },
+  labelOverride: { type: DataTypes.STRING(160), allowNull: true },
+  status: { type: DataTypes.ENUM('enabled', 'hidden'), allowNull: false, defaultValue: 'enabled' },
+  sortOrderOverride: { type: DataTypes.INTEGER, allowNull: true },
+  updatedBy: { type: DataTypes.UUID, allowNull: true },
+}, { ...standard, indexes: [{ unique: true, fields: ['organization_id', 'option_id'] }] });
+
 export const Priority = sequelize.define('Priority', {
   id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
   organizationId: { type: DataTypes.UUID, allowNull: false },
@@ -137,11 +177,50 @@ export const CivicProject = sequelize.define('CivicProject', {
   estimatedCost: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
   targetFunding: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
   securedFunding: { type: DataTypes.DECIMAL(14, 2), allowNull: false, defaultValue: 0 },
+  currencyCode: { type: DataTypes.CHAR(3), allowNull: false, defaultValue: 'AUD', validate: { isIn: [['AUD', 'NZD']] } },
   expectedJobs: { type: DataTypes.INTEGER, allowNull: true },
   expectedBenefit: { type: DataTypes.STRING(240), allowNull: true },
   targetDate: { type: DataTypes.DATEONLY, allowNull: true },
   isSample: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
 }, standard);
+
+export const ProjectPriority = sequelize.define('ProjectPriority', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  projectId: { type: DataTypes.UUID, allowNull: false },
+  priorityId: { type: DataTypes.UUID, allowNull: false },
+  isPrimary: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  assignedBy: { type: DataTypes.UUID, allowNull: true },
+}, { ...standard, indexes: [{ unique: true, fields: ['project_id', 'priority_id'] }, { fields: ['organization_id', 'priority_id'] }] });
+
+export const ProjectSelectorValue = sequelize.define('ProjectSelectorValue', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  projectId: { type: DataTypes.UUID, allowNull: false },
+  optionSetId: { type: DataTypes.UUID, allowNull: false },
+  optionId: { type: DataTypes.UUID, allowNull: false },
+  otherValue: { type: DataTypes.STRING(500), allowNull: true },
+  otherValueNormalized: { type: DataTypes.STRING(500), allowNull: true },
+  selectedBy: { type: DataTypes.UUID, allowNull: true },
+  metadata: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+}, { timestamps: true, underscored: true, paranoid: false, indexes: [{ unique: true, fields: ['project_id', 'option_set_id', 'option_id'] }, { fields: ['organization_id', 'project_id', 'option_set_id'] }] });
+
+export const ProjectConstraint = sequelize.define('ProjectConstraint', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  projectId: { type: DataTypes.UUID, allowNull: false },
+  constraintOptionId: { type: DataTypes.UUID, allowNull: false },
+  constraintKey: { type: DataTypes.STRING(600), allowNull: false },
+  otherValue: { type: DataTypes.STRING(500), allowNull: true },
+  severityOptionId: { type: DataTypes.UUID, allowNull: false },
+  statusOptionId: { type: DataTypes.UUID, allowNull: false },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  dueDate: { type: DataTypes.DATEONLY, allowNull: true },
+  detail: { type: DataTypes.TEXT, allowNull: true },
+  resolutionNote: { type: DataTypes.TEXT, allowNull: true },
+  resolvedAt: { type: DataTypes.DATE, allowNull: true },
+  createdBy: { type: DataTypes.UUID, allowNull: true },
+}, { ...standard, indexes: [{ unique: true, fields: ['project_id', 'constraint_key'] }, { fields: ['organization_id', 'project_id', 'severity_option_id'] }] });
 
 export const ReadinessAssessment = sequelize.define('ReadinessAssessment', {
   id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
@@ -166,6 +245,7 @@ export const FundingPathway = sequelize.define('FundingPathway', {
   sourceType: { type: DataTypes.ENUM('grant', 'loan', 'council', 'partner', 'private', 'other'), defaultValue: 'grant' },
   fit: { type: DataTypes.ENUM('strong', 'possible', 'watch'), defaultValue: 'possible' },
   potentialAmount: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
+  currencyCode: { type: DataTypes.CHAR(3), allowNull: false, defaultValue: 'AUD', validate: { isIn: [['AUD', 'NZD']] } },
   dueDate: { type: DataTypes.DATEONLY, allowNull: true },
   status: { type: DataTypes.ENUM('watching', 'preparing', 'submitted', 'awarded', 'not_successful', 'closed'), defaultValue: 'watching' },
   note: { type: DataTypes.TEXT, allowNull: true },
@@ -180,6 +260,7 @@ export const Grant = sequelize.define('Grant', {
   funder: { type: DataTypes.STRING(180), allowNull: false },
   requestedAmount: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
   awardedAmount: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
+  currencyCode: { type: DataTypes.CHAR(3), allowNull: false, defaultValue: 'AUD', validate: { isIn: [['AUD', 'NZD']] } },
   status: { type: DataTypes.ENUM('identified', 'assessing', 'preparing', 'submitted', 'awarded', 'contracted', 'acquitting', 'acquitted', 'not_successful', 'withdrawn'), defaultValue: 'identified' },
   dueDate: { type: DataTypes.DATEONLY, allowNull: true },
   acquittalDueDate: { type: DataTypes.DATEONLY, allowNull: true },
@@ -245,11 +326,39 @@ CustomerNote.belongsTo(User, { as: 'author', foreignKey: 'authorId' });
 Organization.hasMany(TenantStateEvent, { foreignKey: 'organizationId' });
 TenantStateEvent.belongsTo(Organization, { foreignKey: 'organizationId' });
 TenantStateEvent.belongsTo(User, { as: 'actor', foreignKey: 'actorId' });
+Organization.hasMany(SelectorOptionSet, { foreignKey: 'organizationId' });
+SelectorOptionSet.belongsTo(Organization, { foreignKey: 'organizationId' });
+SelectorOptionSet.hasMany(SelectorOption, { foreignKey: 'optionSetId' });
+SelectorOption.belongsTo(SelectorOptionSet, { foreignKey: 'optionSetId' });
+Organization.hasMany(SelectorOption, { foreignKey: 'organizationId' });
+SelectorOption.belongsTo(Organization, { foreignKey: 'organizationId' });
+Organization.hasMany(OrganizationSelectorOptionOverride, { foreignKey: 'organizationId' });
+OrganizationSelectorOptionOverride.belongsTo(Organization, { foreignKey: 'organizationId' });
+SelectorOption.hasMany(OrganizationSelectorOptionOverride, { foreignKey: 'optionId' });
+OrganizationSelectorOptionOverride.belongsTo(SelectorOption, { foreignKey: 'optionId' });
+OrganizationSelectorOptionOverride.belongsTo(User, { as: 'updatedByUser', foreignKey: 'updatedBy' });
 Organization.hasMany(Priority, { foreignKey: 'organizationId' });
 Organization.hasMany(CivicProject, { foreignKey: 'organizationId' });
 Priority.hasMany(CivicProject, { foreignKey: 'priorityId' });
 CivicProject.belongsTo(Priority, { foreignKey: 'priorityId' });
 CivicProject.belongsTo(User, { as: 'owner', foreignKey: 'ownerId' });
+CivicProject.hasMany(ProjectPriority, { foreignKey: 'projectId' });
+ProjectPriority.belongsTo(CivicProject, { foreignKey: 'projectId' });
+Priority.hasMany(ProjectPriority, { foreignKey: 'priorityId' });
+ProjectPriority.belongsTo(Priority, { foreignKey: 'priorityId' });
+ProjectPriority.belongsTo(User, { as: 'assignedByUser', foreignKey: 'assignedBy' });
+CivicProject.hasMany(ProjectSelectorValue, { foreignKey: 'projectId' });
+ProjectSelectorValue.belongsTo(CivicProject, { foreignKey: 'projectId' });
+ProjectSelectorValue.belongsTo(SelectorOptionSet, { foreignKey: 'optionSetId' });
+ProjectSelectorValue.belongsTo(SelectorOption, { foreignKey: 'optionId' });
+ProjectSelectorValue.belongsTo(User, { as: 'selectedByUser', foreignKey: 'selectedBy' });
+CivicProject.hasMany(ProjectConstraint, { foreignKey: 'projectId' });
+ProjectConstraint.belongsTo(CivicProject, { foreignKey: 'projectId' });
+ProjectConstraint.belongsTo(SelectorOption, { as: 'constraintOption', foreignKey: 'constraintOptionId' });
+ProjectConstraint.belongsTo(SelectorOption, { as: 'severityOption', foreignKey: 'severityOptionId' });
+ProjectConstraint.belongsTo(SelectorOption, { as: 'statusOption', foreignKey: 'statusOptionId' });
+ProjectConstraint.belongsTo(User, { as: 'constraintOwner', foreignKey: 'ownerId' });
+ProjectConstraint.belongsTo(User, { as: 'constraintCreator', foreignKey: 'createdBy' });
 CivicProject.hasMany(ReadinessAssessment, { foreignKey: 'projectId' });
 ReadinessAssessment.belongsTo(CivicProject, { foreignKey: 'projectId' });
 CivicProject.hasMany(FundingPathway, { foreignKey: 'projectId' });
@@ -264,4 +373,4 @@ WorkItem.belongsTo(User, { as: 'owner', foreignKey: 'ownerId' });
 CivicProject.hasMany(EvidenceItem, { foreignKey: 'projectId' });
 Grant.hasMany(EvidenceItem, { foreignKey: 'grantId' });
 
-export const models = { Organization, User, ProductPlan, Subscription, IntegrationConnection, PlatformSetting, SupportCase, CustomerContact, CustomerNote, TenantStateEvent, Priority, CivicProject, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, AuditLog };
+export const models = { Organization, User, ProductPlan, Subscription, IntegrationConnection, PlatformSetting, SupportCase, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, AuditLog };
