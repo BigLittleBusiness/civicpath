@@ -309,6 +309,81 @@ export const AuditLog = sequelize.define('AuditLog', {
   ipAddress: { type: DataTypes.STRING(64), allowNull: true },
 }, { timestamps: true, updatedAt: false, underscored: true });
 
+// Public prospect records are deliberately separate from council tenants and Council Proof data.
+export const PublicLead = sequelize.define('PublicLead', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  firstName: { type: DataTypes.STRING(80), allowNull: false },
+  lastName: { type: DataTypes.STRING(80), allowNull: false },
+  email: { type: DataTypes.STRING(191), allowNull: false, validate: { isEmail: true } },
+  councilName: { type: DataTypes.STRING(180), allowNull: false },
+  country: { type: DataTypes.ENUM('AU', 'NZ'), allowNull: false },
+  stateRegion: { type: DataTypes.STRING(100), allowNull: false },
+  role: { type: DataTypes.STRING(80), allowNull: false },
+  roleOther: { type: DataTypes.STRING(160), allowNull: true },
+  decisionUseCase: { type: DataTypes.STRING(100), allowNull: false },
+  decisionUseCaseOther: { type: DataTypes.STRING(320), allowNull: true },
+  lifecycleStatus: { type: DataTypes.ENUM('new', 'contacted', 'exploring', 'nurture', 'closed', 'unsubscribed'), allowNull: false, defaultValue: 'new' },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  source: { type: DataTypes.STRING(160), allowNull: false, defaultValue: 'portfolio_readiness_pulse' },
+  lastPulseAt: { type: DataTypes.DATE, allowNull: true },
+}, { ...standard, indexes: [{ fields: ['email', 'council_name'] }, { fields: ['lifecycle_status', 'created_at'] }] });
+
+export const PulseLeadSession = sequelize.define('PulseLeadSession', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  sessionId: { type: DataTypes.UUID, allowNull: false, unique: true },
+  leadId: { type: DataTypes.UUID, allowNull: false },
+  assessmentVersion: { type: DataTypes.STRING(20), allowNull: false, defaultValue: '1.0.0' },
+  sourceUrl: { type: DataTypes.STRING(1000), allowNull: true },
+  referrer: { type: DataTypes.STRING(1000), allowNull: true },
+  ipHash: { type: DataTypes.STRING(128), allowNull: true },
+  userAgentHash: { type: DataTypes.STRING(128), allowNull: true },
+  responses: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+  completedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+}, standard);
+
+export const PulseLeadConsent = sequelize.define('PulseLeadConsent', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  leadId: { type: DataTypes.UUID, allowNull: false },
+  sessionId: { type: DataTypes.UUID, allowNull: false },
+  consentType: { type: DataTypes.ENUM('resource_request', 'marketing_updates'), allowNull: false },
+  granted: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  wording: { type: DataTypes.TEXT, allowNull: false },
+  policyVersion: { type: DataTypes.STRING(40), allowNull: false, defaultValue: 'pulse-privacy-1.0' },
+  evidence: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+  withdrawnAt: { type: DataTypes.DATE, allowNull: true },
+}, { ...standard, indexes: [{ unique: true, fields: ['session_id', 'consent_type'] }, { fields: ['lead_id', 'consent_type', 'granted'] }] });
+
+export const PulseLeadResult = sequelize.define('PulseLeadResult', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  leadId: { type: DataTypes.UUID, allowNull: false },
+  sessionId: { type: DataTypes.UUID, allowNull: false, unique: true },
+  scoreVersion: { type: DataTypes.STRING(20), allowNull: false, defaultValue: '1.0.0' },
+  portfolioVisibilityScore: { type: DataTypes.INTEGER, allowNull: false, validate: { min: 0, max: 100 } },
+  strategicConnectionScore: { type: DataTypes.INTEGER, allowNull: false, validate: { min: 0, max: 100 } },
+  decisionReadinessScore: { type: DataTypes.INTEGER, allowNull: false, validate: { min: 0, max: 100 } },
+  overallScore: { type: DataTypes.INTEGER, allowNull: false, validate: { min: 0, max: 100 } },
+  bandCode: { type: DataTypes.STRING(80), allowNull: false },
+  bandLabel: { type: DataTypes.STRING(160), allowNull: false },
+  summary: { type: DataTypes.TEXT, allowNull: false },
+  actions: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
+}, standard);
+
+export const PulseLeadNotification = sequelize.define('PulseLeadNotification', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  leadId: { type: DataTypes.UUID, allowNull: false },
+  sessionId: { type: DataTypes.UUID, allowNull: false },
+  notificationType: { type: DataTypes.ENUM('recipient_email', 'internal_alert', 'crm_webhook'), allowNull: false },
+  status: { type: DataTypes.ENUM('pending', 'sending', 'sent', 'failed', 'disabled'), allowNull: false, defaultValue: 'pending' },
+  attemptCount: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  nextAttemptAt: { type: DataTypes.DATE, allowNull: true },
+  lastAttemptAt: { type: DataTypes.DATE, allowNull: true },
+  deliveredAt: { type: DataTypes.DATE, allowNull: true },
+  providerReference: { type: DataTypes.STRING(255), allowNull: true },
+  responseStatus: { type: DataTypes.INTEGER, allowNull: true },
+  lastError: { type: DataTypes.STRING(1000), allowNull: true },
+  payload: { type: DataTypes.JSON, allowNull: true },
+}, { ...standard, indexes: [{ unique: true, fields: ['session_id', 'notification_type'] }, { fields: ['status', 'next_attempt_at'] }, { fields: ['lead_id', 'created_at'] }] });
+
 Organization.hasMany(User, { foreignKey: 'organizationId' });
 User.belongsTo(Organization, { foreignKey: 'organizationId' });
 Organization.hasMany(Subscription, { foreignKey: 'organizationId' });
@@ -372,5 +447,13 @@ Grant.hasMany(WorkItem, { foreignKey: 'grantId' });
 WorkItem.belongsTo(User, { as: 'owner', foreignKey: 'ownerId' });
 CivicProject.hasMany(EvidenceItem, { foreignKey: 'projectId' });
 Grant.hasMany(EvidenceItem, { foreignKey: 'grantId' });
+PublicLead.hasMany(PulseLeadSession, { foreignKey: 'leadId' });
+PulseLeadSession.belongsTo(PublicLead, { foreignKey: 'leadId' });
+PublicLead.hasMany(PulseLeadConsent, { foreignKey: 'leadId' });
+PulseLeadConsent.belongsTo(PublicLead, { foreignKey: 'leadId' });
+PublicLead.hasMany(PulseLeadResult, { foreignKey: 'leadId' });
+PulseLeadResult.belongsTo(PublicLead, { foreignKey: 'leadId' });
+PublicLead.hasMany(PulseLeadNotification, { foreignKey: 'leadId' });
+PulseLeadNotification.belongsTo(PublicLead, { foreignKey: 'leadId' });
 
-export const models = { Organization, User, ProductPlan, Subscription, IntegrationConnection, PlatformSetting, SupportCase, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, AuditLog };
+export const models = { Organization, User, ProductPlan, Subscription, IntegrationConnection, PlatformSetting, SupportCase, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, AuditLog, PublicLead, PulseLeadSession, PulseLeadConsent, PulseLeadResult, PulseLeadNotification };

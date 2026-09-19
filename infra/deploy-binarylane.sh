@@ -15,6 +15,7 @@ npm run db:migrate
 node db/migrations/002_system_admin_foundation.mjs
 node db/migrations/003_customer_360_and_mfa.mjs
 node db/migrations/004_structured_selectors.mjs
+node db/migrations/005_public_pulse_leads.mjs
 
 cd "$APP_DIR/frontend"
 npm ci --legacy-peer-deps

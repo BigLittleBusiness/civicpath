@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireRoles, requireStepUp } from '../../middleware/auth.js';
 import { platformOverview, listCustomers, listSupportCases, updateSupportCase, getStripeSettings, saveStripeSettings, listPlans } from '../../controllers/adminController.js';
 import { customer360, changeTenantState, addCustomerContact, addCustomerNote } from '../../controllers/customerAdminController.js';
+import { getPulseRouting, listPulseLeads, savePulseRouting } from '../../controllers/pulseAdminController.js';
 
 export const adminRouter = Router();
 adminRouter.use(requireRoles('platform_admin'));
@@ -16,3 +17,6 @@ adminRouter.patch('/support-cases/:caseId', updateSupportCase);
 adminRouter.get('/plans', listPlans);
 adminRouter.get('/billing/stripe', getStripeSettings);
 adminRouter.put('/billing/stripe', requireStepUp, saveStripeSettings);
+adminRouter.get('/lead-routing', getPulseRouting);
+adminRouter.put('/lead-routing', requireStepUp, savePulseRouting);
+adminRouter.get('/pulse-leads', listPulseLeads);

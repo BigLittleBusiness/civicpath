@@ -13,6 +13,7 @@ export const env = Object.freeze({
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT || 3015),
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+  corsOrigins: (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:3000').split(',').map((value) => value.trim()).filter(Boolean),
   cookieDomain: process.env.COOKIE_DOMAIN || undefined,
   jwtSecret: process.env.JWT_SECRET || 'development-only-secret-change-me',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
