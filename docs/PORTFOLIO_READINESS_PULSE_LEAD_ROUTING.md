@@ -20,15 +20,17 @@ On completion, CivicPath commits the lead, assessment session, calculated snapsh
 
 Open **System Admin → Lead routing**. Saving routing settings requires the existing fresh password and authenticator-app step-up. Sensitive values are encrypted at rest with the platform encryption key and are never returned to the browser after saving.
 
+The production application is hosted on Binary Lane. Amazon SES sends outbound transactional email; Zoho Mail receives replies and other inbound mail for the Big Little Business mailboxes. The initial Pulse configuration should use `CivicPath <hello@biglittlebusiness.com>` as the From address, `hello@biglittlebusiness.com` as the Zoho-hosted Reply-To address, and `kristian@biglittlebusiness.com` as the internal lead-alert recipient. AWS S3 is reserved for application file storage and is not a substitute for email routing.
+
 ### Transactional email settings
 
 | Field | Requirement | Purpose |
 |---|---|---|
 | Enable transactional delivery | Explicitly enabled only after testing. | Enables the visitor snapshot email and internal lead alert. |
 | AWS region | Required. Use the region containing the verified SES identity. | Selects the Amazon SES endpoint. |
-| From name and From email | Required when email is enabled. | Sends the visitor’s requested snapshot. |
-| Reply-to email | Optional but recommended. | Makes it easy for a prospect to respond. |
-| Internal lead-alert email | Required when email is enabled. | Sends one concise alert to the nominated CivicPath owner. |
+| From name and From email | Required when email is enabled. Start with `CivicPath <hello@biglittlebusiness.com>`. | Sends the visitor’s requested snapshot through SES. |
+| Reply-to email | Optional but recommended. Start with `hello@biglittlebusiness.com`. | Routes prospect replies into Zoho Mail. |
+| Internal lead-alert email | Required when email is enabled. Start with `kristian@biglittlebusiness.com`. | Sends one concise alert to the nominated CivicPath owner. |
 | AWS access key ID and secret key | Required when email is enabled. | Authenticates against the approved SES sending identity. |
 
 ### CRM webhook settings

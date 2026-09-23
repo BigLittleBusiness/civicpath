@@ -2,7 +2,9 @@
 
 ## Required before deployment
 
-Create a Binary Lane Ubuntu instance with MySQL 8, Nginx, Node 22 through NVM, PM2 and Certbot. Create DNS A records for `app.civicpath.com.au` and `www.civicpath.com.au` to the relevant instances. The application and marketing site may initially share an instance, but they must use distinct Nginx server blocks and application roots.
+Create a Binary Lane Ubuntu instance with MySQL 8, Nginx, Node 22 through NVM, PM2 and Certbot. Create DNS A records for `app.civicpath.com.au` and `www.civicpath.com.au` to the relevant instances. The application and marketing site may initially share an instance, but they must use distinct Nginx server blocks and application roots. Binary Lane hosts CivicPath; Amazon SES sends outbound transactional email, Amazon S3 stores application files, and Zoho Mail receives inbound `biglittlebusiness.com` correspondence.
+
+Use `docs/PRODUCTION_PLATFORM_AND_COMMUNICATIONS_STANDARD.md` as the authoritative service-boundary and mailbox-role reference for every production configuration step.
 
 ## Production configuration
 
@@ -16,7 +18,7 @@ Create a Binary Lane Ubuntu instance with MySQL 8, Nginx, Node 22 through NVM, P
 
 ## Security gates
 
-Do not publish a working sign-in until HTTPS, production secrets, database backups, off-host log rotation, least-privilege MySQL access, firewall rules and a privacy/security review have been completed. `PLATFORM_ENCRYPTION_KEY` is required before any Stripe secret key, webhook signing secret or System Administrator TOTP secret can be saved; CivicPath encrypts these values with AES-256-GCM and never sends them back to the browser after saving. AWS SES, S3, Stripe and AI services each need their own production configuration and tests; they are intentionally not activated by this initial build.
+Do not publish a working sign-in until HTTPS, production secrets, database backups, off-host log rotation, least-privilege MySQL access, firewall rules and a privacy/security review have been completed. `PLATFORM_ENCRYPTION_KEY` is required before any Stripe secret key, webhook signing secret or System Administrator TOTP secret can be saved; CivicPath encrypts these values with AES-256-GCM and never sends them back to the browser after saving. AWS SES and S3 require their own production configuration and tests; they are intentionally not activated by this initial build. Configure SES for outbound mail only and retain Zoho Mail as the inbound provider for `hello@biglittlebusiness.com`, `admin@biglittlebusiness.com`, `tech@biglittlebusiness.com` and `kristian@biglittlebusiness.com`.
 
 ## System Administrator MFA enrolment
 
