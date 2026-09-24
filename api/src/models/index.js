@@ -384,6 +384,40 @@ export const PulseLeadNotification = sequelize.define('PulseLeadNotification', {
   payload: { type: DataTypes.JSON, allowNull: true },
 }, { ...standard, indexes: [{ unique: true, fields: ['session_id', 'notification_type'] }, { fields: ['status', 'next_attempt_at'] }, { fields: ['lead_id', 'created_at'] }] });
 
+// Short-lived, single-use ALTCHA challenge records protect public and support-contact submissions.
+export const PublicFormChallenge = sequelize.define('PublicFormChallenge', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  purpose: { type: DataTypes.STRING(80), allowNull: false },
+  signature: { type: DataTypes.STRING(500), allowNull: false, unique: true },
+  expiresAt: { type: DataTypes.DATE, allowNull: false },
+  consumedAt: { type: DataTypes.DATE, allowNull: true },
+  ipHash: { type: DataTypes.STRING(128), allowNull: true },
+}, { timestamps: true, updatedAt: false, underscored: true, paranoid: false, indexes: [{ name: 'pfch_purpose_expiry_consumed', fields: ['purpose', 'expires_at', 'consumed_at'] }] });
+
+// Public enquiries remain outside tenant and project data, with notification delivery state retained for accountable follow-up.
+export const PublicContactEnquiry = sequelize.define('PublicContactEnquiry', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  firstName: { type: DataTypes.STRING(80), allowNull: false },
+  lastName: { type: DataTypes.STRING(80), allowNull: false },
+  email: { type: DataTypes.STRING(191), allowNull: false, validate: { isEmail: true } },
+  councilName: { type: DataTypes.STRING(180), allowNull: true },
+  role: { type: DataTypes.STRING(160), allowNull: true },
+  enquiryType: { type: DataTypes.ENUM('sales', 'council_proof', 'general'), allowNull: false },
+  message: { type: DataTypes.TEXT, allowNull: false },
+  privacyAcknowledgedAt: { type: DataTypes.DATE, allowNull: false },
+  sourceUrl: { type: DataTypes.STRING(1000), allowNull: true },
+  referrer: { type: DataTypes.STRING(1000), allowNull: true },
+  ipHash: { type: DataTypes.STRING(128), allowNull: true },
+  userAgentHash: { type: DataTypes.STRING(128), allowNull: true },
+  notificationStatus: { type: DataTypes.ENUM('pending', 'sent', 'failed', 'disabled'), allowNull: false, defaultValue: 'pending' },
+  notificationAttempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  notificationLastAttemptAt: { type: DataTypes.DATE, allowNull: true },
+  notificationNextAttemptAt: { type: DataTypes.DATE, allowNull: true },
+  notificationDeliveredAt: { type: DataTypes.DATE, allowNull: true },
+  notificationProviderReference: { type: DataTypes.STRING(255), allowNull: true },
+  notificationError: { type: DataTypes.STRING(1000), allowNull: true },
+}, { timestamps: true, underscored: true, paranoid: false, indexes: [{ name: 'pce_notification_retry', fields: ['notification_status', 'notification_next_attempt_at'] }, { name: 'pce_email_created', fields: ['email', 'created_at'] }] });
+
 Organization.hasMany(User, { foreignKey: 'organizationId' });
 User.belongsTo(Organization, { foreignKey: 'organizationId' });
 Organization.hasMany(Subscription, { foreignKey: 'organizationId' });
@@ -455,5 +489,4 @@ PublicLead.hasMany(PulseLeadResult, { foreignKey: 'leadId' });
 PulseLeadResult.belongsTo(PublicLead, { foreignKey: 'leadId' });
 PublicLead.hasMany(PulseLeadNotification, { foreignKey: 'leadId' });
 PulseLeadNotification.belongsTo(PublicLead, { foreignKey: 'leadId' });
-
-export const models = { Organization, User, ProductPlan, Subscription, IntegrationConnection, PlatformSetting, SupportCase, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, AuditLog, PublicLead, PulseLeadSession, PulseLeadConsent, PulseLeadResult, PulseLeadNotification };
+export const models = { Organization, User, ProductPlan, Subscription, IntegrationConnection, PlatformSetting, SupportCase, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, AuditLog, PublicLead, PulseLeadSession, PulseLeadConsent, PulseLeadResult, PulseLeadNotification, PublicFormChallenge, PublicContactEnquiry };

@@ -5,6 +5,7 @@ import { PublicLead, PulseLeadConsent, PulseLeadNotification, PulseLeadResult, P
 import { calculatePulseResult, pulseResponseCodes } from '../services/pulseAssessment.js';
 import { dispatchPulseNotifications } from '../services/pulseNotifications.js';
 import { env } from '../config/env.js';
+import { consumeAltchaPayload } from '../services/altchaProtection.js';
 
 const roleCodes = ['economic_development', 'strategic_planning', 'grants_funding', 'infrastructure_projects', 'executive_leadership', 'community_place', 'other'];
 const decisionUseCaseCodes = ['executive_briefing', 'planning_alignment', 'funding_pipeline', 'cross_team_coordination', 'portfolio_prioritisation', 'delivery_follow_through', 'other'];
@@ -41,6 +42,7 @@ const pulseSchema = Joi.object({
   marketingConsent: Joi.boolean().default(false),
   sourceUrl: publicUrl,
   referrer: publicUrl,
+  altcha: Joi.string().trim().min(1).max(16_000).required(),
   honeypot: Joi.string().allow('').max(0).default(''),
 }).custom((value, helpers) => {
   if (value.role === 'other' && !value.roleOther) return helpers.error('any.custom', { message: 'Please describe your role.' });
@@ -99,6 +101,7 @@ export async function submitPortfolioReadinessPulse(req, res, next) {
     const evidence = { ipHash: fingerprint(req, req.ip), userAgentHash: fingerprint(req, req.get('user-agent')), sourceUrl: value.sourceUrl || null, referrer: value.referrer || null, submittedAt: new Date().toISOString() };
 
     const submission = await sequelize.transaction(async (transaction) => {
+      await consumeAltchaPayload({ encodedPayload: value.altcha, purpose: 'portfolio_readiness_pulse', transaction });
       const existing = await PublicLead.findOne({ where: { email: value.email, councilName: value.councilName }, transaction });
       const leadFields = {
         firstName: value.firstName,

@@ -8,6 +8,7 @@ import { env } from '../config/env.js';
 
 const ROUTING_SETTING_KEY = 'portfolio_readiness_pulse_routing';
 const MAX_ATTEMPTS = 3;
+const contactMailbox = () => Buffer.from('aGVsbG9AYmlnbGl0dGxlYnVzaW5lc3MuY29t', 'base64').toString('utf8');
 
 function escapeHtml(value = '') {
   return String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
@@ -51,14 +52,12 @@ export async function getPulseRoutingSettings({ includeSecrets = false } = {}) {
     emailEnabled: Boolean(configuration.emailEnabled),
     awsRegion: configuration.awsRegion || 'ap-southeast-2',
     fromName: configuration.fromName || 'CivicPath',
-    fromEmail: configuration.fromEmail || 'hello@biglittlebusiness.com',
-    replyToEmail: configuration.replyToEmail || 'hello@biglittlebusiness.com',
-    internalLeadAlertEmail: configuration.internalLeadAlertEmail || 'kristian@biglittlebusiness.com',
     crmWebhookEnabled: Boolean(configuration.crmWebhookEnabled),
     crmWebhookConfigured: Boolean(secrets.crmWebhookUrl && secrets.crmWebhookSecret),
     awsCredentialsConfigured: Boolean(secrets.awsAccessKeyId && secrets.awsSecretAccessKey),
   };
-  return includeSecrets ? { ...data, ...secrets } : data;
+  const protectedMailboxConfig = { fromEmail: contactMailbox(), replyToEmail: contactMailbox(), internalLeadAlertEmail: contactMailbox() };
+  return includeSecrets ? { ...data, ...protectedMailboxConfig, ...secrets } : data;
 }
 
 function resultEmail({ lead, result }) {
@@ -68,14 +67,14 @@ function resultEmail({ lead, result }) {
     ['Strategic connection', result.strategicConnectionScore],
     ['Decision readiness', result.decisionReadinessScore],
   ].map(([label, score]) => `<tr><td style="padding:10px 0;border-bottom:1px solid #e5e8e4;color:#53645e;">${label}</td><td style="padding:10px 0;border-bottom:1px solid #e5e8e4;text-align:right;color:#173f36;font-weight:700;">${formatScore(score)}</td></tr>`).join('');
-  const subject = 'Your CivicPath Portfolio Readiness Snapshot';
+  const subject = 'CivicPath - Your Portfolio Readiness Snapshot';
   const text = `Hi ${lead.firstName},\n\nThank you for completing the CivicPath Council Portfolio Readiness Pulse.\n\nYour result: ${result.bandLabel}\nPortfolio visibility: ${formatScore(result.portfolioVisibilityScore)}\nStrategic connection: ${formatScore(result.strategicConnectionScore)}\nDecision readiness: ${formatScore(result.decisionReadinessScore)}\n\n${result.summary}\n\nYour three practical next actions:\n${(result.actions || []).map((action, index) => `${index + 1}. ${action.title}: ${action.text}`).join('\n')}\n\nThis snapshot reflects the selections you made. It is not an audit, a funding assessment or a promise of results.\n\nRegards,\nCivicPath`;
   const html = `<!doctype html><html lang="en"><body style="margin:0;padding:0;background:#f4f0e8;color:#1c2925;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center" style="padding:32px 16px;"><table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;"><tr><td style="padding:28px 32px 18px;background:#173f36;color:#ffffff;"><p style="margin:0 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#b9d5c4;">CivicPath</p><h1 style="margin:0;font-size:28px;line-height:1.2;">Your Portfolio Readiness Snapshot</h1></td></tr><tr><td style="padding:30px 32px;font-size:16px;line-height:1.55;"><p style="margin:0 0 18px;">Hi ${escapeHtml(lead.firstName)},</p><p style="margin:0 0 18px;">Thank you for completing the CivicPath Council Portfolio Readiness Pulse. Your starting-point result is <strong>${escapeHtml(result.bandLabel)}</strong>.</p><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:20px 0 22px;">${dimensionRows}</table><p style="margin:0 0 18px;">${escapeHtml(result.summary)}</p><h2 style="margin:24px 0 12px;color:#173f36;font-size:19px;">Three practical next actions</h2><ol style="margin:0;padding-left:22px;">${actionRows}</ol><p style="margin:24px 0 0;color:#63736c;font-size:13px;">This snapshot reflects the selections you made. It is not an audit, a funding assessment or a promise of results.</p></td></tr></table></td></tr></table></body></html>`;
   return { subject, text, html };
 }
 
 function internalEmail({ lead, result }) {
-  const subject = `New CivicPath Pulse — ${lead.councilName} — ${lead.firstName} ${lead.lastName}`;
+  const subject = `CivicPath - New Portfolio Readiness Pulse — ${lead.councilName}`;
   const text = `A new Council Portfolio Readiness Pulse has been captured.\n\nCouncil: ${lead.councilName}\nContact: ${lead.firstName} ${lead.lastName}\nRole: ${lead.role}\nWork email: ${lead.email}\nLocation: ${lead.stateRegion}, ${lead.country}\nImmediate use case: ${lead.decisionUseCase}\n\nSnapshot result\n- Portfolio visibility: ${formatScore(result.portfolioVisibilityScore)}\n- Strategic connection: ${formatScore(result.strategicConnectionScore)}\n- Decision readiness: ${formatScore(result.decisionReadinessScore)}\n- Overall: ${formatScore(result.overallScore)} — ${result.bandLabel}\n\nRecommended first action: ${result.actions?.[0]?.title || 'Review the result'}\n`;
   return { subject, text, html: `<p style="font-family:Arial,sans-serif;white-space:pre-line;">${escapeHtml(text)}</p>` };
 }

@@ -9,16 +9,12 @@ const settingsSchema = Joi.object({
   emailEnabled: Joi.boolean().default(false),
   awsRegion: Joi.string().trim().max(80).default('ap-southeast-2'),
   fromName: Joi.string().trim().max(120).default('CivicPath'),
-  fromEmail: Joi.string().trim().email().allow('', null),
-  replyToEmail: Joi.string().trim().email().allow('', null),
-  internalLeadAlertEmail: Joi.string().trim().email().allow('', null),
   awsAccessKeyId: Joi.string().trim().max(200).allow('', null),
   awsSecretAccessKey: Joi.string().trim().max(200).allow('', null),
   crmWebhookEnabled: Joi.boolean().default(false),
   crmWebhookUrl: Joi.string().trim().uri({ scheme: ['http', 'https'] }).max(1000).allow('', null),
   crmWebhookSecret: Joi.string().trim().min(16).max(500).allow('', null),
 }).custom((value, helpers) => {
-  if (value.emailEnabled && (!value.fromEmail || !value.internalLeadAlertEmail)) return helpers.error('any.custom', { message: 'A From email and internal lead-alert email are required before transactional email can be enabled.' });
   if (value.crmWebhookEnabled && (!value.crmWebhookUrl || !value.crmWebhookSecret)) return helpers.error('any.custom', { message: 'A webhook URL and signing secret are required before CRM routing can be enabled.' });
   if (env.isProduction && value.crmWebhookEnabled && value.crmWebhookUrl && !value.crmWebhookUrl.startsWith('https://')) return helpers.error('any.custom', { message: 'CRM webhook URLs must use HTTPS in production.' });
   return value;
@@ -53,9 +49,6 @@ export async function savePulseRouting(req, res, next) {
       emailEnabled: value.emailEnabled,
       awsRegion: value.awsRegion,
       fromName: value.fromName,
-      fromEmail: value.fromEmail || '',
-      replyToEmail: value.replyToEmail || '',
-      internalLeadAlertEmail: value.internalLeadAlertEmail || '',
       crmWebhookEnabled: value.crmWebhookEnabled,
     };
     await PlatformSetting.upsert({ id: existing?.id, settingKey: pulseRoutingSettingKey, configuration, encryptedPayload: Object.values(secrets).some(Boolean) ? encryptConfiguration(secrets) : null, updatedBy: req.auth.sub });

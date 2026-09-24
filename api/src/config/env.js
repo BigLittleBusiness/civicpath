@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const requiredInProduction = ['JWT_SECRET', 'DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'FRONTEND_URL', 'PLATFORM_ENCRYPTION_KEY'];
+const requiredInProduction = ['JWT_SECRET', 'DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'FRONTEND_URL', 'PLATFORM_ENCRYPTION_KEY', 'ALTCHA_HMAC_SECRET'];
 
 if (process.env.NODE_ENV === 'production') {
   const missing = requiredInProduction.filter((key) => !process.env[key]);
@@ -27,6 +27,7 @@ export const env = Object.freeze({
   },
   demoMode: process.env.DEMO_MODE === 'true',
   platformEncryptionKey: process.env.PLATFORM_ENCRYPTION_KEY || '',
+  altchaHmacSecret: process.env.ALTCHA_HMAC_SECRET || process.env.JWT_SECRET || 'development-altcha-secret-change-me',
   mfaIssuer: process.env.MFA_ISSUER || 'CivicPath',
   privilegedActionMinutes: Number(process.env.PRIVILEGED_ACTION_MINUTES || 10),
   isProduction: process.env.NODE_ENV === 'production',

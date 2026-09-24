@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { env } from './config/env.js';
 import { retryPendingPulseNotifications } from './services/pulseNotifications.js';
+import { retryPendingContactNotifications } from './services/contactNotifications.js';
 
 export function registerScheduledJobs() {
   if (env.nodeEnv === 'test') return;
@@ -12,4 +13,7 @@ export function registerScheduledJobs() {
   cron.schedule('*/15 * * * *', () => retryPendingPulseNotifications()
     .then(({ attempted }) => attempted && console.info(`[civicpath] retried ${attempted} pending Pulse notifications`))
     .catch((error) => console.error('[civicpath] Pulse notification retry failed', error)), { timezone: 'Australia/Sydney' });
+  cron.schedule('*/15 * * * *', () => retryPendingContactNotifications()
+    .then(({ attempted }) => attempted && console.info(`[civicpath] retried ${attempted} pending contact notifications`))
+    .catch((error) => console.error('[civicpath] contact notification retry failed', error)), { timezone: 'Australia/Sydney' });
 }
