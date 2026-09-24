@@ -107,7 +107,7 @@ export default function Home() {
           <a href="#councils" onClick={() => setMenuOpen(false)}>For councils</a>
           <a href="#pricing" onClick={() => setMenuOpen(false)}>Pricing</a>
           <a href="#faq" onClick={() => setMenuOpen(false)}>FAQ</a>
-          <a className="nav-cta" href="#proof" onClick={() => setMenuOpen(false)}>Explore a Council Proof <span>↗</span></a>
+          <a className="nav-cta" href="/contact" onClick={() => setMenuOpen(false)}>Discuss a Council Proof <span>↗</span></a>
         </nav>
       </header>
 
@@ -118,7 +118,7 @@ export default function Home() {
           <h1>Turn strategic priorities into <em>delivery-ready</em> projects.</h1>
           <p className="hero-lead">CivicPath gives regional council teams a shared way to see project readiness, funding pathways, decisions and the next practical move.</p>
           <div className="hero-actions">
-            <a className="button button-primary" href="#proof">Explore a Council Proof <span>→</span></a>
+            <a className="button button-primary" href="/contact">Discuss a Council Proof <span>→</span></a>
             <a className="text-link" href="#workflow">See the workflow <span>↓</span></a>
           </div>
           <p className="hero-note">Built for councils balancing growth, grants and delivery with limited capacity.</p>
@@ -187,7 +187,7 @@ export default function Home() {
             <p><b>Infrastructure and grants</b> teams preparing projects for funders, partners and delivery.</p>
             <p><b>Executives and directors</b> who need a decision-ready portfolio view without another manual report.</p>
           </div>
-          <a className="text-link strong" href="#proof">Start with a live Council portfolio <span>→</span></a>
+          <a className="text-link strong" href="/contact">Start with a live Council portfolio <span>→</span></a>
         </div>
       </section>
 
@@ -235,7 +235,7 @@ export default function Home() {
           <div className="proof-points">
             <span>15 projects</span><span>60 days</span><span>$1,200</span>
           </div>
-          <a className="button button-light" href="#pricing">View the Council Proof <span>→</span></a>
+          <a className="button button-light" href="/contact">Discuss the Council Proof <span>→</span></a>
           <p className="small-print">The Proof fee is creditable against an annual CivicPath subscription when you proceed.</p>
         </div>
       </section>
@@ -257,7 +257,7 @@ export default function Home() {
               <p className="price"><span>{tier.price}</span> {tier.term}</p>
               <p className="price-description">{tier.description}</p>
               <ul>{tier.points.map((point) => <li key={point}>{point}</li>)}</ul>
-              <a href="#top" className="text-link">Discuss this option <span>→</span></a>
+              <a href="/contact" className="text-link">Discuss this option <span>→</span></a>
             </article>
           ))}
         </div>
@@ -302,7 +302,7 @@ export default function Home() {
         <p className="eyebrow">A more dependable route forward</p>
         <h2>Make the next project conversation more useful.</h2>
         <p>See the portfolio, understand the blockers and give your team a shared route toward a fundable, deliverable outcome.</p>
-        <a className="button button-primary" href="#proof">Explore a Council Proof <span>→</span></a>
+        <a className="button button-primary" href="/contact">Discuss a Council Proof <span>→</span></a>
       </section>
 
       <footer className="site-footer">
