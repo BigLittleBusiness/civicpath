@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { AltchaVerification } from "../components/AltchaVerification";
 import "./Contact.css";
 
-const gateLogo = "/manus-storage/civicpath_gate_placeholder_60270a68.png";
+const gateLogo = "/assets/civicpath-gate.webp";
 const apiBase = (import.meta.env.VITE_CIVICPATH_API_BASE_URL || "https://app.civicpath.com.au/v1").replace(/\/$/, "");
 
 type EnquiryType = "council_proof" | "sales" | "general";

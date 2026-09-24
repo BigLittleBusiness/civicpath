@@ -1,10 +1,10 @@
 // DESIGN: Civic Field Manual — grounded regional civic design, river-slate surfaces, eucalypt signals and a practical route from priority to delivery.
 import { useState } from "react";
 
-const gateLogo = "/manus-storage/civicpath_gate_placeholder_60270a68.png";
-const heroImage = "/manus-storage/civicpath_hero_regional_strategy_e419c57c.jpg";
-const readinessImage = "/manus-storage/civicpath_project_readiness_17ee2fdd.jpg";
-const workshopImage = "/manus-storage/civicpath_partnership_workshop_4462148b.jpg";
+const gateLogo = "/assets/civicpath-gate.webp";
+const heroImage = "/assets/civicpath-hero-regional-strategy.webp";
+const readinessImage = "/assets/civicpath-project-readiness.webp";
+const workshopImage = "/assets/civicpath-partnership-workshop.webp";
 
 const workflow = [
   {
@@ -96,7 +96,7 @@ export default function Home() {
     <main>
       <header className="site-header">
         <a className="brand" href="#top" aria-label="CivicPath home">
-          <img src={gateLogo} alt="CivicPath Gate logo placeholder" />
+          <img src={gateLogo} alt="CivicPath logo" />
           <span>CivicPath</span>
         </a>
         <button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-controls="site-nav">
@@ -306,7 +306,7 @@ export default function Home() {
       </section>
 
       <footer className="site-footer">
-        <a className="brand" href="#top"><img src={gateLogo} alt="CivicPath Gate logo placeholder" /><span>CivicPath</span></a>
+        <a className="brand" href="#top"><img src={gateLogo} alt="CivicPath logo" /><span>CivicPath</span></a>
         <p>Strategic project readiness for regional councils.</p>
       </footer>
     </main>

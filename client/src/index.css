@@ -30,6 +30,9 @@ body {
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
+/* The managed preview may inject an attribution overlay outside #root. It is not
+   part of the CivicPath product and has no effect on the Binary Lane build. */
+manus-content-root { display: none !important; }
 a { color: inherit; text-decoration: none; }
 button { font: inherit; }
 
