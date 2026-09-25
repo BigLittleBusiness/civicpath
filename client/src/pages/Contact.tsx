@@ -11,7 +11,7 @@ type FieldKey = "firstName" | "lastName" | "email" | "message" | "privacyAcknowl
 type EnquiryOption = { value: EnquiryType; label: string; subject: string; description: string };
 
 const options: EnquiryOption[] = [
-  { value: "council_proof", label: "Council Proof", subject: "Council Proof enquiry", description: "Talk through a focused 60-day starting point for one live portfolio." },
+  { value: "council_proof", label: "Council Proof", subject: "Council Proof enquiry", description: "A focused 60-day starting point for one live portfolio. The $495 Council Proof fee is applied as a conversion credit toward your Council’s first annual CivicPath subscription if you proceed." },
   { value: "sales", label: "CivicPath for your Council", subject: "Sales enquiry", description: "Explore whether CivicPath fits the way your team plans, prioritises and progresses projects." },
   { value: "general", label: "A general question", subject: "General enquiry", description: "Ask a practical question about CivicPath, implementation or fit." },
 ];
