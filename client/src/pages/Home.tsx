@@ -255,11 +255,11 @@ export default function Home() {
           {pricing.map((tier) => (
             <article className={`price-block ${tier.accent} ${tier.credit ? "has-credit" : ""}`} key={tier.name}>
               <p className="price-name">{tier.name}</p>
-              {tier.credit && <div className="price-credit" aria-label="Council Proof conversion credit"><span aria-hidden="true">↗</span><div><b>{tier.credit}</b><p>The paid Proof fee is applied to your Council’s first annual subscription if it proceeds within 30 days of the final Proof review.</p></div></div>}
               <p className="price"><span>{tier.price}</span> {tier.term}</p>
               <p className="price-description">{tier.description}</p>
               <ul>{tier.points.map((point) => <li key={point}>{point}</li>)}</ul>
               <a href="/contact" className="text-link">Discuss this option <span>→</span></a>
+              {tier.credit && <div className="price-credit" aria-label="Council Proof conversion credit"><span aria-hidden="true">↗</span><div><b>{tier.credit}</b><p>The paid Proof fee is applied to your Council’s first annual subscription if it proceeds within 30 days of the final Proof review.</p></div></div>}
             </article>
           ))}
         </div>
