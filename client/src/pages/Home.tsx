@@ -46,6 +46,7 @@ const pricing = [
     description: "A focused test with one live portfolio—not a generic software trial.",
     points: ["Up to 15 live projects", "Readiness and funding pathways", "Remote setup and practical training"],
     accent: "sand",
+    credit: "Full $495 conversion credit",
   },
   {
     name: "Essentials",
@@ -236,7 +237,7 @@ export default function Home() {
             <span>15 projects</span><span>60 days</span><span>$495</span>
           </div>
           <a className="button button-light" href="/contact">Discuss the Council Proof <span>→</span></a>
-          <p className="small-print">The Proof fee is creditable against an annual CivicPath subscription when you proceed.</p>
+          <p className="small-print">The full $495 paid Proof fee is applied as a conversion credit against your first annual CivicPath subscription when your Council proceeds within 30 days of the final Proof review.</p>
         </div>
       </section>
 
@@ -252,8 +253,9 @@ export default function Home() {
         </div>
         <div className="pricing-grid">
           {pricing.map((tier) => (
-            <article className={`price-block ${tier.accent}`} key={tier.name}>
+            <article className={`price-block ${tier.accent} ${tier.credit ? "has-credit" : ""}`} key={tier.name}>
               <p className="price-name">{tier.name}</p>
+              {tier.credit && <div className="price-credit" aria-label="Council Proof conversion credit"><span aria-hidden="true">↗</span><div><b>{tier.credit}</b><p>The paid Proof fee is applied to your Council’s first annual subscription if it proceeds within 30 days of the final Proof review.</p></div></div>}
               <p className="price"><span>{tier.price}</span> {tier.term}</p>
               <p className="price-description">{tier.description}</p>
               <ul>{tier.points.map((point) => <li key={point}>{point}</li>)}</ul>
@@ -261,6 +263,12 @@ export default function Home() {
             </article>
           ))}
         </div>
+        <aside className="pricing-credit-faq" aria-labelledby="pricing-credit-faq-title">
+          <p className="eyebrow">Council Proof conversion credit</p>
+          <h3 id="pricing-credit-faq-title">How is the $495 applied?</h3>
+          <p>If your Council proceeds to its first annual CivicPath subscription within 30 days of the final Council Proof review, the full $495 paid Proof fee is deducted from that annual subscription invoice.</p>
+          <div className="pricing-credit-faq-note"><strong>Clear boundaries</strong><span>Submitting an enquiry does not create an invoice, payment obligation or subscription. The Council Proof scope, timing and payment are agreed before the engagement begins.</span></div>
+        </aside>
       </section>
 
       <section className="faq-section" id="faq">
