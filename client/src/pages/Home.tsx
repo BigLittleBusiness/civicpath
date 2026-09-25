@@ -1,10 +1,10 @@
 // DESIGN: Civic Field Manual — grounded regional civic design, river-slate surfaces, eucalypt signals and a practical route from priority to delivery.
 import { useState } from "react";
 
-const gateLogo = "/manus-storage/civicpath_gate_placeholder_60270a68.png";
-const heroImage = "/manus-storage/civicpath_hero_regional_strategy_e419c57c.jpg";
-const readinessImage = "/manus-storage/civicpath_project_readiness_17ee2fdd.jpg";
-const workshopImage = "/manus-storage/civicpath_partnership_workshop_4462148b.jpg";
+const gateLogo = "/assets/civicpath-gate.webp";
+const heroImage = "/assets/civicpath-hero-regional-strategy.webp";
+const readinessImage = "/assets/civicpath-project-readiness.webp";
+const workshopImage = "/assets/civicpath-partnership-workshop.webp";
 
 const workflow = [
   {
@@ -41,11 +41,12 @@ const modules = [
 const pricing = [
   {
     name: "Council Proof",
-    price: "$1,200",
+    price: "$495",
     term: "for 60 days",
     description: "A focused test with one live portfolio—not a generic software trial.",
     points: ["Up to 15 live projects", "Readiness and funding pathways", "Remote setup and practical training"],
     accent: "sand",
+    credit: "Full $495 conversion credit",
   },
   {
     name: "Essentials",
@@ -96,7 +97,7 @@ export default function Home() {
     <main>
       <header className="site-header">
         <a className="brand" href="#top" aria-label="CivicPath home">
-          <img src={gateLogo} alt="CivicPath Gate logo placeholder" />
+          <img src={gateLogo} alt="CivicPath logo" />
           <span>CivicPath</span>
         </a>
         <button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-controls="site-nav">
@@ -107,7 +108,7 @@ export default function Home() {
           <a href="#councils" onClick={() => setMenuOpen(false)}>For councils</a>
           <a href="#pricing" onClick={() => setMenuOpen(false)}>Pricing</a>
           <a href="#faq" onClick={() => setMenuOpen(false)}>FAQ</a>
-          <a className="nav-cta" href="#proof" onClick={() => setMenuOpen(false)}>Explore a Council Proof <span>↗</span></a>
+          <a className="nav-cta" href="/contact" onClick={() => setMenuOpen(false)}>Discuss a Council Proof <span>↗</span></a>
         </nav>
       </header>
 
@@ -118,7 +119,7 @@ export default function Home() {
           <h1>Turn strategic priorities into <em>delivery-ready</em> projects.</h1>
           <p className="hero-lead">CivicPath gives regional council teams a shared way to see project readiness, funding pathways, decisions and the next practical move.</p>
           <div className="hero-actions">
-            <a className="button button-primary" href="#proof">Explore a Council Proof <span>→</span></a>
+            <a className="button button-primary" href="/contact">Discuss a Council Proof <span>→</span></a>
             <a className="text-link" href="#workflow">See the workflow <span>↓</span></a>
           </div>
           <p className="hero-note">Built for councils balancing growth, grants and delivery with limited capacity.</p>
@@ -187,7 +188,7 @@ export default function Home() {
             <p><b>Infrastructure and grants</b> teams preparing projects for funders, partners and delivery.</p>
             <p><b>Executives and directors</b> who need a decision-ready portfolio view without another manual report.</p>
           </div>
-          <a className="text-link strong" href="#proof">Start with a live Council portfolio <span>→</span></a>
+          <a className="text-link strong" href="/contact">Start with a live Council portfolio <span>→</span></a>
         </div>
       </section>
 
@@ -233,10 +234,10 @@ export default function Home() {
           <h2>Start with one live portfolio.</h2>
           <p>A CivicPath Council Proof is a focused 60-day engagement that helps your team test the workflow with real projects, real constraints and a practical Executive review.</p>
           <div className="proof-points">
-            <span>15 projects</span><span>60 days</span><span>$1,200</span>
+            <span>15 projects</span><span>60 days</span><span>$495</span>
           </div>
-          <a className="button button-light" href="#pricing">View the Council Proof <span>→</span></a>
-          <p className="small-print">The Proof fee is creditable against an annual CivicPath subscription when you proceed.</p>
+          <a className="button button-light" href="/contact">Discuss the Council Proof <span>→</span></a>
+          <p className="small-print">The full $495 paid Proof fee is applied as a conversion credit against your first annual CivicPath subscription when your Council proceeds within 30 days of the final Proof review.</p>
         </div>
       </section>
 
@@ -252,15 +253,22 @@ export default function Home() {
         </div>
         <div className="pricing-grid">
           {pricing.map((tier) => (
-            <article className={`price-block ${tier.accent}`} key={tier.name}>
+            <article className={`price-block ${tier.accent} ${tier.credit ? "has-credit" : ""}`} key={tier.name}>
               <p className="price-name">{tier.name}</p>
               <p className="price"><span>{tier.price}</span> {tier.term}</p>
               <p className="price-description">{tier.description}</p>
               <ul>{tier.points.map((point) => <li key={point}>{point}</li>)}</ul>
-              <a href="#top" className="text-link">Discuss this option <span>→</span></a>
+              <a href="/contact" className="text-link">Discuss this option <span>→</span></a>
+              {tier.credit && <div className="price-credit" aria-label="Council Proof conversion credit"><span aria-hidden="true">↗</span><div><b>{tier.credit}</b><p>The paid Proof fee is applied to your Council’s first annual subscription if it proceeds within 30 days of the final Proof review.</p></div></div>}
             </article>
           ))}
         </div>
+        <aside className="pricing-credit-faq" aria-labelledby="pricing-credit-faq-title">
+          <p className="eyebrow">Council Proof conversion credit</p>
+          <h3 id="pricing-credit-faq-title">How is the $495 applied?</h3>
+          <p>If your Council proceeds to its first annual CivicPath subscription within 30 days of the final Council Proof review, the full $495 paid Proof fee is deducted from that annual subscription invoice.</p>
+          <div className="pricing-credit-faq-note"><strong>Clear boundaries</strong><span>Submitting an enquiry does not create an invoice, payment obligation or subscription. The Council Proof scope, timing and payment are agreed before the engagement begins.</span></div>
+        </aside>
       </section>
 
       <section className="faq-section" id="faq">
@@ -302,11 +310,11 @@ export default function Home() {
         <p className="eyebrow">A more dependable route forward</p>
         <h2>Make the next project conversation more useful.</h2>
         <p>See the portfolio, understand the blockers and give your team a shared route toward a fundable, deliverable outcome.</p>
-        <a className="button button-primary" href="#proof">Explore a Council Proof <span>→</span></a>
+        <a className="button button-primary" href="/contact">Discuss a Council Proof <span>→</span></a>
       </section>
 
       <footer className="site-footer">
-        <a className="brand" href="#top"><img src={gateLogo} alt="CivicPath Gate logo placeholder" /><span>CivicPath</span></a>
+        <a className="brand" href="#top"><img src={gateLogo} alt="CivicPath logo" /><span>CivicPath</span></a>
         <p>Strategic project readiness for regional councils.</p>
       </footer>
     </main>
