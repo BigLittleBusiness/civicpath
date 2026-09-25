@@ -41,7 +41,7 @@ const modules = [
 const pricing = [
   {
     name: "Council Proof",
-    price: "$1,200",
+    price: "$495",
     term: "for 60 days",
     description: "A focused test with one live portfolio—not a generic software trial.",
     points: ["Up to 15 live projects", "Readiness and funding pathways", "Remote setup and practical training"],
@@ -233,7 +233,7 @@ export default function Home() {
           <h2>Start with one live portfolio.</h2>
           <p>A CivicPath Council Proof is a focused 60-day engagement that helps your team test the workflow with real projects, real constraints and a practical Executive review.</p>
           <div className="proof-points">
-            <span>15 projects</span><span>60 days</span><span>$1,200</span>
+            <span>15 projects</span><span>60 days</span><span>$495</span>
           </div>
           <a className="button button-light" href="/contact">Discuss the Council Proof <span>→</span></a>
           <p className="small-print">The Proof fee is creditable against an annual CivicPath subscription when you proceed.</p>
