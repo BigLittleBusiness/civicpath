@@ -10,6 +10,7 @@
     "db:migrate:pulse": "node db/migrations/005_public_pulse_leads.mjs",
     "db:migrate:contact": "node db/migrations/006_public_contact_and_altcha.mjs",
     "db:migrate:enquiries": "node db/migrations/007_enquiry_follow_up_and_support_attachments.mjs",
+    "db:migrate:proof-confirmations": "node db/migrations/008_council_proof_confirmation_delivery.mjs",
     "db:seed-demo": "node db/seeds/001_demo_workspace.mjs",
     "test": "node --test",
     "test:system-admin-mfa": "node tests/systemAdminMfaFlow.mjs"

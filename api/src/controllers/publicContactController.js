@@ -48,6 +48,7 @@ export async function submitPublicContactEnquiry(req, res, next) {
         privacyAcknowledgedAt: new Date(),
         sourceUrl: value.sourceUrl || null,
         referrer: value.referrer || null,
+        confirmationStatus: value.enquiryType === 'council_proof' ? 'pending' : 'not_applicable',
         ipHash: fingerprint(req, req.ip),
         userAgentHash: fingerprint(req, req.get('user-agent')),
       }, { transaction });

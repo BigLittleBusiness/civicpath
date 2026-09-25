@@ -408,7 +408,7 @@ export const PublicFormChallenge = sequelize.define('PublicFormChallenge', {
   ipHash: { type: DataTypes.STRING(128), allowNull: true },
 }, { timestamps: true, updatedAt: false, underscored: true, paranoid: false, indexes: [{ name: 'pfch_purpose_expiry_consumed', fields: ['purpose', 'expires_at', 'consumed_at'] }] });
 
-// Public enquiries remain outside tenant and project data, with notification delivery state retained for accountable follow-up.
+// Public enquiries remain outside tenant and project data, with internal-alert and Council Proof confirmation delivery state retained for accountable follow-up.
 export const PublicContactEnquiry = sequelize.define('PublicContactEnquiry', {
   id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
   firstName: { type: DataTypes.STRING(80), allowNull: false },
@@ -430,13 +430,20 @@ export const PublicContactEnquiry = sequelize.define('PublicContactEnquiry', {
   notificationDeliveredAt: { type: DataTypes.DATE, allowNull: true },
   notificationProviderReference: { type: DataTypes.STRING(255), allowNull: true },
   notificationError: { type: DataTypes.STRING(1000), allowNull: true },
+  confirmationStatus: { type: DataTypes.ENUM('not_applicable', 'pending', 'sent', 'failed', 'disabled'), allowNull: false, defaultValue: 'not_applicable' },
+  confirmationAttempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  confirmationLastAttemptAt: { type: DataTypes.DATE, allowNull: true },
+  confirmationNextAttemptAt: { type: DataTypes.DATE, allowNull: true },
+  confirmationDeliveredAt: { type: DataTypes.DATE, allowNull: true },
+  confirmationProviderReference: { type: DataTypes.STRING(255), allowNull: true },
+  confirmationError: { type: DataTypes.STRING(1000), allowNull: true },
   followUpStatus: { type: DataTypes.ENUM('new', 'contacted', 'follow_up_due', 'nurture', 'closed', 'not_a_fit'), allowNull: false, defaultValue: 'new' },
   followUpDueAt: { type: DataTypes.DATE, allowNull: true },
   followUpNote: { type: DataTypes.TEXT, allowNull: true },
   followUpOwnerId: { type: DataTypes.UUID, allowNull: true },
   followUpUpdatedAt: { type: DataTypes.DATE, allowNull: true },
   followUpResolvedAt: { type: DataTypes.DATE, allowNull: true },
-}, { timestamps: true, underscored: true, paranoid: false, indexes: [{ name: 'pce_notification_retry', fields: ['notification_status', 'notification_next_attempt_at'] }, { name: 'pce_email_created', fields: ['email', 'created_at'] }, { name: 'pce_follow_up_queue', fields: ['follow_up_status', 'follow_up_due_at', 'created_at'] }] });
+}, { timestamps: true, underscored: true, paranoid: false, indexes: [{ name: 'pce_notification_retry', fields: ['notification_status', 'notification_next_attempt_at'] }, { name: 'pce_confirmation_retry', fields: ['confirmation_status', 'confirmation_next_attempt_at'] }, { name: 'pce_email_created', fields: ['email', 'created_at'] }, { name: 'pce_follow_up_queue', fields: ['follow_up_status', 'follow_up_due_at', 'created_at'] }] });
 
 Organization.hasMany(User, { foreignKey: 'organizationId' });
 User.belongsTo(Organization, { foreignKey: 'organizationId' });

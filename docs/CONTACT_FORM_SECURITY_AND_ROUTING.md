@@ -10,7 +10,7 @@ ALTCHA is supplemented by a hidden honeypot field and endpoint-level rate limits
 
 ## Routing and data handling
 
-Public sales, Council Proof and general enquiries are written to the `public_contact_enquiries` table. The stored record includes the message, source metadata, privacy acknowledgement, notification-delivery state and an accountable System Administrator follow-up state, owner, due date and note. It is deliberately not linked to a council tenant. The platform-only **Public enquiries** view filters these records by category and follow-up status, while each update is audited.
+Public sales, Council Proof and general enquiries are written to the `public_contact_enquiries` table. The stored record includes the message, source metadata, privacy acknowledgement, internal-notification and Council Proof confirmation-delivery states, and an accountable System Administrator follow-up state, owner, due date and note. It is deliberately not linked to a council tenant. The platform-only **Public enquiries** view filters these records by category and follow-up status, while each update is audited.
 
 Portal support enquiries are written to the tenant-scoped `support_cases` table and audited. A user may include up to three screenshots or documents, each at most 10 MB. The API permits only PNG, JPEG, WebP, PDF, TXT, Word and Excel file types, checks applicable file signatures, and stores only private attachment keys in the database. Production accepts attachments only when the private `SUPPORT_ATTACHMENT_S3_BUCKET` is configured; uploaded objects use no public ACL or URL and are retrieved through an audited System Administrator download route. Local private storage is available only for development verification.
 
@@ -20,16 +20,17 @@ After a record is committed, CivicPath attempts a transactional email delivery t
 |---|---|
 | CivicPath sales enquiry | `CivicPath - Sales enquiry` |
 | Council Proof enquiry | `CivicPath - Council Proof enquiry` |
+| Council Proof prospect confirmation | `CivicPath - Your Council Proof enquiry` |
 | General enquiry | `CivicPath - General enquiry` |
 | Portal support enquiry | `CivicPath - Support enquiry` |
 | Portfolio Readiness Pulse recipient result | `CivicPath - Your Portfolio Readiness Snapshot` |
 | Portfolio Readiness Pulse internal alert | `CivicPath - New Portfolio Readiness Pulse — {Council}` |
 
-If SES has not been configured, the submission remains stored with delivery marked disabled. It is not discarded. Once SES is enabled, failed public-contact emails retry at most three times using the scheduled retry worker.
+For a Council Proof enquiry, the prospect confirmation states that a paid **$495 Council Proof fee** is applied as a conversion credit against the Council's first annual CivicPath subscription when the Council proceeds within 30 days of the final Proof review. It also confirms that the enquiry itself creates neither an invoice nor a payment obligation. If SES has not been configured, the submission remains stored with delivery marked disabled. It is not discarded. Once SES is enabled, failed public-contact alerts and Council Proof confirmations retry at most three times using the scheduled retry worker.
 
 ## Production deployment
 
-Set a distinct high-entropy `ALTCHA_HMAC_SECRET` in `api/.env`. It is required in production and must not be reused for JWTs, platform encryption, webhooks or any other signing purpose. Apply migrations `006_public_contact_and_altcha.mjs` and `007_enquiry_follow_up_and_support_attachments.mjs` after migrations 001–005. Configure least-privilege AWS credentials, `AWS_REGION` and a private `SUPPORT_ATTACHMENT_S3_BUCKET` before enabling production support uploads. Build the marketing website with `VITE_CIVICPATH_API_BASE_URL=https://app.civicpath.com.au/v1` and retain `https://www.civicpath.com.au` in `CORS_ORIGINS`.
+Set a distinct high-entropy `ALTCHA_HMAC_SECRET` in `api/.env`. It is required in production and must not be reused for JWTs, platform encryption, webhooks or any other signing purpose. Apply migrations `006_public_contact_and_altcha.mjs`, `007_enquiry_follow_up_and_support_attachments.mjs` and `008_council_proof_confirmation_delivery.mjs` after migrations 001–005. Configure least-privilege AWS credentials, `AWS_REGION` and a private `SUPPORT_ATTACHMENT_S3_BUCKET` before enabling production support uploads. Build the marketing website with `VITE_CIVICPATH_API_BASE_URL=https://app.civicpath.com.au/v1` and retain `https://www.civicpath.com.au` in `CORS_ORIGINS`.
 
 Do not enable SES delivery until the approved SES identity, least-privilege sending credential, DKIM, suppression controls and an end-to-end delivery test are complete. Zoho Mail remains the inward-email service for replies.
 
