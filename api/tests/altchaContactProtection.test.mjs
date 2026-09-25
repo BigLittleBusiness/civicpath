@@ -28,3 +28,9 @@ test('contact notification subjects name the CivicPath platform and enquiry type
   assert.equal(message.subject, 'CivicPath - Sales enquiry');
   assert.match(message.text, /Example Council/);
 });
+
+test('support notification subjects include the selected support category', () => {
+  const message = contactEmailMessage({ firstName: 'Taylor', lastName: 'Ng', email: 'taylor@example.gov.au', councilName: 'Example Council', role: 'Strategy', enquiryType: 'support', category: 'technical', message: 'The project form cannot be saved.' });
+  assert.equal(message.subject, 'CivicPath - Support enquiry - Technical issue');
+  assert.match(message.html, /Technical issue/);
+});

@@ -10,8 +10,19 @@ function escapeHtml(value = '') {
   return String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 }
 
-function titleFor(type) {
-  return ({ sales: 'Sales enquiry', council_proof: 'Council Proof enquiry', general: 'General enquiry', support: 'Support enquiry' }[type] || 'General enquiry');
+function titleFor(type, category) {
+  const publicTitles = { sales: 'Sales enquiry', council_proof: 'Council Proof enquiry', general: 'General enquiry' };
+  const supportTitles = {
+    access: 'Access or account',
+    billing: 'Billing',
+    data: 'Data or import',
+    grant_lifecycle: 'Grant lifecycle',
+    portfolio: 'Portfolio or project workflow',
+    technical: 'Technical issue',
+    other: 'Another support matter',
+  };
+  if (type === 'support') return `Support enquiry - ${supportTitles[category] || 'General support'}`;
+  return publicTitles[type] || 'General enquiry';
 }
 
 function sourceAddress(config) {
@@ -27,9 +38,10 @@ function nextAttempt(attemptCount) {
 }
 
 export function contactEmailMessage(enquiry) {
-  const subject = `CivicPath - ${titleFor(enquiry.enquiryType)}`;
-  const text = `A CivicPath ${titleFor(enquiry.enquiryType).toLowerCase()} has been received.\n\nName: ${enquiry.firstName} ${enquiry.lastName}\nEmail: ${enquiry.email}\nCouncil or organisation: ${enquiry.councilName || 'Not supplied'}\nRole: ${enquiry.role || 'Not supplied'}\n\nMessage:\n${enquiry.message}\n\nRecorded: ${enquiry.createdAt?.toISOString?.() || new Date().toISOString()}`;
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;color:#1c2925;line-height:1.55"><p style="color:#173f36;font-weight:700">CivicPath - ${escapeHtml(titleFor(enquiry.enquiryType))}</p><p><strong>Name:</strong> ${escapeHtml(`${enquiry.firstName} ${enquiry.lastName}`)}<br/><strong>Email:</strong> ${escapeHtml(enquiry.email)}<br/><strong>Council or organisation:</strong> ${escapeHtml(enquiry.councilName || 'Not supplied')}<br/><strong>Role:</strong> ${escapeHtml(enquiry.role || 'Not supplied')}</p><p><strong>Message</strong><br/>${escapeHtml(enquiry.message).replace(/\n/g, '<br/>')}</p></div>`;
+  const title = titleFor(enquiry.enquiryType, enquiry.category);
+  const subject = `CivicPath - ${title}`;
+  const text = `A CivicPath ${title.toLowerCase()} has been received.\n\nName: ${enquiry.firstName} ${enquiry.lastName}\nEmail: ${enquiry.email}\nCouncil or organisation: ${enquiry.councilName || 'Not supplied'}\nRole: ${enquiry.role || 'Not supplied'}\n\nMessage:\n${enquiry.message}\n\nRecorded: ${enquiry.createdAt?.toISOString?.() || new Date().toISOString()}`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;color:#1c2925;line-height:1.55"><p style="color:#173f36;font-weight:700">CivicPath - ${escapeHtml(title)}</p><p><strong>Name:</strong> ${escapeHtml(`${enquiry.firstName} ${enquiry.lastName}`)}<br/><strong>Email:</strong> ${escapeHtml(enquiry.email)}<br/><strong>Council or organisation:</strong> ${escapeHtml(enquiry.councilName || 'Not supplied')}<br/><strong>Role:</strong> ${escapeHtml(enquiry.role || 'Not supplied')}</p><p><strong>Message</strong><br/>${escapeHtml(enquiry.message).replace(/\n/g, '<br/>')}</p></div>`;
   return { subject, text, html };
 }
 
