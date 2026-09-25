@@ -1,0 +1,49 @@
+name: Deploy App
+
+on:
+  push:
+    branches:
+      - app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+
+            cd ${{ secrets.VPS_APP_PROJECT_PATH }}
+            git fetch origin
+            git checkout app
+            git reset --hard origin/app
+
+            cd api
+            npm ci --omit=dev
+            npm run db:migrate
+            node db/migrations/002_system_admin_foundation.mjs
+            node db/migrations/003_customer_360_and_mfa.mjs
+            node db/migrations/004_structured_selectors.mjs
+            node db/migrations/005_public_pulse_leads.mjs
+            node db/migrations/006_public_contact_and_altcha.mjs
+            node db/migrations/007_enquiry_follow_up_and_support_attachments.mjs
+            node db/migrations/008_council_proof_confirmation_delivery.mjs
+
+            cd ../frontend
+            npm ci --legacy-peer-deps
+            CI=false npm run build
+
+            sudo systemctl restart civicpath-api
+            sudo systemctl reload nginx
+
+            echo "Deployment completed successfully"
