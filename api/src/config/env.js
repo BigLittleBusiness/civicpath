@@ -30,5 +30,10 @@ export const env = Object.freeze({
   altchaHmacSecret: process.env.ALTCHA_HMAC_SECRET || process.env.JWT_SECRET || 'development-altcha-secret-change-me',
   mfaIssuer: process.env.MFA_ISSUER || 'CivicPath',
   privilegedActionMinutes: Number(process.env.PRIVILEGED_ACTION_MINUTES || 10),
+  awsRegion: process.env.AWS_REGION || '',
+  awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+  awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+  supportAttachmentS3Bucket: process.env.SUPPORT_ATTACHMENT_S3_BUCKET || '',
+  supportAttachmentLocalPath: process.env.SUPPORT_ATTACHMENT_LOCAL_PATH || (process.env.NODE_ENV === 'production' ? '/var/lib/civicpath/support-attachments' : '/tmp/civicpath-support-attachments'),
   isProduction: process.env.NODE_ENV === 'production',
 });

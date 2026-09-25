@@ -11,7 +11,8 @@ import { previewImport, commitImport } from '../../controllers/importController.
 import { adminRouter } from './admin.js';
 import { submitPortfolioReadinessPulse } from '../../controllers/publicPulseController.js';
 import { getPublicContactChallenge, submitPublicContactEnquiry } from '../../controllers/publicContactController.js';
-import { getSupportContactChallenge, submitSupportContact } from '../../controllers/supportContactController.js';
+import { getSupportContactChallenge } from '../../controllers/supportContactController.js';
+import { submitSupportContactWithAttachments, uploadSupportAttachments } from '../../controllers/supportAttachmentController.js';
 
 export const v1Router = Router();
 v1Router.get('/health', (_req, res) => res.json({ data: { service: 'civicpath-api', status: 'healthy' } }));
@@ -22,7 +23,7 @@ v1Router.post('/public/portfolio-readiness-pulse', submitPortfolioReadinessPulse
 v1Router.use('/admin', requireAuth, tenantScope, adminRouter);
 v1Router.use(requireAuth, tenantScope);
 v1Router.get('/support/contact-challenge', getSupportContactChallenge);
-v1Router.post('/support/contact-enquiries', submitSupportContact);
+v1Router.post('/support/contact-enquiries', uploadSupportAttachments, submitSupportContactWithAttachments);
 v1Router.get('/dashboard/overview', overview);
 v1Router.get('/council-proof/selectors', listCouncilProofSelectors);
 v1Router.get('/priorities', listPriorities);

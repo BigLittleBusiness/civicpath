@@ -89,6 +89,20 @@ export const SupportCase = sequelize.define('SupportCase', {
   resolvedAt: { type: DataTypes.DATE, allowNull: true },
 }, standard);
 
+// Support attachments use a private object-store key only; no public URL is persisted.
+export const SupportAttachment = sequelize.define('SupportAttachment', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  supportCaseId: { type: DataTypes.UUID, allowNull: false },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  uploadedBy: { type: DataTypes.UUID, allowNull: true },
+  originalFilename: { type: DataTypes.STRING(180), allowNull: false },
+  contentType: { type: DataTypes.STRING(160), allowNull: false },
+  sizeBytes: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+  checksumSha256: { type: DataTypes.STRING(64), allowNull: false },
+  storageProvider: { type: DataTypes.ENUM('local', 's3'), allowNull: false },
+  storageKey: { type: DataTypes.STRING(500), allowNull: false, unique: true },
+}, { ...standard, indexes: [{ fields: ['support_case_id', 'created_at'] }, { fields: ['organization_id', 'created_at'] }] });
+
 export const CustomerContact = sequelize.define('CustomerContact', {
   id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
   organizationId: { type: DataTypes.UUID, allowNull: false },
@@ -416,7 +430,13 @@ export const PublicContactEnquiry = sequelize.define('PublicContactEnquiry', {
   notificationDeliveredAt: { type: DataTypes.DATE, allowNull: true },
   notificationProviderReference: { type: DataTypes.STRING(255), allowNull: true },
   notificationError: { type: DataTypes.STRING(1000), allowNull: true },
-}, { timestamps: true, underscored: true, paranoid: false, indexes: [{ name: 'pce_notification_retry', fields: ['notification_status', 'notification_next_attempt_at'] }, { name: 'pce_email_created', fields: ['email', 'created_at'] }] });
+  followUpStatus: { type: DataTypes.ENUM('new', 'contacted', 'follow_up_due', 'nurture', 'closed', 'not_a_fit'), allowNull: false, defaultValue: 'new' },
+  followUpDueAt: { type: DataTypes.DATE, allowNull: true },
+  followUpNote: { type: DataTypes.TEXT, allowNull: true },
+  followUpOwnerId: { type: DataTypes.UUID, allowNull: true },
+  followUpUpdatedAt: { type: DataTypes.DATE, allowNull: true },
+  followUpResolvedAt: { type: DataTypes.DATE, allowNull: true },
+}, { timestamps: true, underscored: true, paranoid: false, indexes: [{ name: 'pce_notification_retry', fields: ['notification_status', 'notification_next_attempt_at'] }, { name: 'pce_email_created', fields: ['email', 'created_at'] }, { name: 'pce_follow_up_queue', fields: ['follow_up_status', 'follow_up_due_at', 'created_at'] }] });
 
 Organization.hasMany(User, { foreignKey: 'organizationId' });
 User.belongsTo(Organization, { foreignKey: 'organizationId' });
@@ -427,6 +447,11 @@ Organization.hasMany(IntegrationConnection, { foreignKey: 'organizationId' });
 IntegrationConnection.belongsTo(Organization, { foreignKey: 'organizationId' });
 Organization.hasMany(SupportCase, { foreignKey: 'organizationId' });
 SupportCase.belongsTo(Organization, { foreignKey: 'organizationId' });
+SupportCase.hasMany(SupportAttachment, { foreignKey: 'supportCaseId', onDelete: 'CASCADE' });
+SupportAttachment.belongsTo(SupportCase, { foreignKey: 'supportCaseId' });
+Organization.hasMany(SupportAttachment, { foreignKey: 'organizationId' });
+SupportAttachment.belongsTo(Organization, { foreignKey: 'organizationId' });
+SupportAttachment.belongsTo(User, { as: 'uploadedByUser', foreignKey: 'uploadedBy' });
 Organization.hasMany(CustomerContact, { foreignKey: 'organizationId' });
 CustomerContact.belongsTo(Organization, { foreignKey: 'organizationId' });
 Organization.hasMany(CustomerNote, { foreignKey: 'organizationId' });
@@ -489,4 +514,5 @@ PublicLead.hasMany(PulseLeadResult, { foreignKey: 'leadId' });
 PulseLeadResult.belongsTo(PublicLead, { foreignKey: 'leadId' });
 PublicLead.hasMany(PulseLeadNotification, { foreignKey: 'leadId' });
 PulseLeadNotification.belongsTo(PublicLead, { foreignKey: 'leadId' });
-export const models = { Organization, User, ProductPlan, Subscription, IntegrationConnection, PlatformSetting, SupportCase, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, AuditLog, PublicLead, PulseLeadSession, PulseLeadConsent, PulseLeadResult, PulseLeadNotification, PublicFormChallenge, PublicContactEnquiry };
+PublicContactEnquiry.belongsTo(User, { as: 'followUpOwner', foreignKey: 'followUpOwnerId' });
+export const models = { Organization, User, ProductPlan, Subscription, IntegrationConnection, PlatformSetting, SupportCase, SupportAttachment, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, AuditLog, PublicLead, PulseLeadSession, PulseLeadConsent, PulseLeadResult, PulseLeadNotification, PublicFormChallenge, PublicContactEnquiry };

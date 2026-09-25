@@ -10,7 +10,9 @@ ALTCHA is supplemented by a hidden honeypot field and endpoint-level rate limits
 
 ## Routing and data handling
 
-Public sales, Council Proof and general enquiries are written to the `public_contact_enquiries` table. The stored record includes the message, source metadata, privacy acknowledgement and notification-delivery state. It is deliberately not linked to a council tenant. Portal support enquiries are written to the tenant-scoped `support_cases` table and audited.
+Public sales, Council Proof and general enquiries are written to the `public_contact_enquiries` table. The stored record includes the message, source metadata, privacy acknowledgement, notification-delivery state and an accountable System Administrator follow-up state, owner, due date and note. It is deliberately not linked to a council tenant. The platform-only **Public enquiries** view filters these records by category and follow-up status, while each update is audited.
+
+Portal support enquiries are written to the tenant-scoped `support_cases` table and audited. A user may include up to three screenshots or documents, each at most 10 MB. The API permits only PNG, JPEG, WebP, PDF, TXT, Word and Excel file types, checks applicable file signatures, and stores only private attachment keys in the database. Production accepts attachments only when the private `SUPPORT_ATTACHMENT_S3_BUCKET` is configured; uploaded objects use no public ACL or URL and are retrieved through an audited System Administrator download route. Local private storage is available only for development verification.
 
 After a record is committed, CivicPath attempts a transactional email delivery through Amazon SES. The recipient address is held only server-side, is not sent to browsers, and routes every website or portal enquiry to the approved Big Little Business public correspondence mailbox. All notification subjects use the required convention:
 
@@ -27,7 +29,7 @@ If SES has not been configured, the submission remains stored with delivery mark
 
 ## Production deployment
 
-Set a distinct high-entropy `ALTCHA_HMAC_SECRET` in `api/.env`. It is required in production and must not be reused for JWTs, platform encryption, webhooks or any other signing purpose. Apply migration `006_public_contact_and_altcha.mjs` after migrations 001–005. Build the marketing website with `VITE_CIVICPATH_API_BASE_URL=https://app.civicpath.com.au/v1` and retain `https://www.civicpath.com.au` in `CORS_ORIGINS`.
+Set a distinct high-entropy `ALTCHA_HMAC_SECRET` in `api/.env`. It is required in production and must not be reused for JWTs, platform encryption, webhooks or any other signing purpose. Apply migrations `006_public_contact_and_altcha.mjs` and `007_enquiry_follow_up_and_support_attachments.mjs` after migrations 001–005. Configure least-privilege AWS credentials, `AWS_REGION` and a private `SUPPORT_ATTACHMENT_S3_BUCKET` before enabling production support uploads. Build the marketing website with `VITE_CIVICPATH_API_BASE_URL=https://app.civicpath.com.au/v1` and retain `https://www.civicpath.com.au` in `CORS_ORIGINS`.
 
 Do not enable SES delivery until the approved SES identity, least-privilege sending credential, DKIM, suppression controls and an end-to-end delivery test are complete. Zoho Mail remains the inward-email service for replies.
 

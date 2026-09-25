@@ -9,6 +9,7 @@
     "db:migrate": "node db/migrations/001_initial_schema.mjs",
     "db:migrate:pulse": "node db/migrations/005_public_pulse_leads.mjs",
     "db:migrate:contact": "node db/migrations/006_public_contact_and_altcha.mjs",
+    "db:migrate:enquiries": "node db/migrations/007_enquiry_follow_up_and_support_attachments.mjs",
     "db:seed-demo": "node db/seeds/001_demo_workspace.mjs",
     "test": "node --test",
     "test:system-admin-mfa": "node tests/systemAdminMfaFlow.mjs"
@@ -18,6 +19,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1068.0",
     "@aws-sdk/client-ses": "^3.1068.0",
     "@stripe/stripe-js": "^7.1.0",
     "altcha-lib": "2.5.0",

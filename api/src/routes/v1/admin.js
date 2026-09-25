@@ -3,6 +3,8 @@ import { requireRoles, requireStepUp } from '../../middleware/auth.js';
 import { platformOverview, listCustomers, listSupportCases, updateSupportCase, getStripeSettings, saveStripeSettings, listPlans } from '../../controllers/adminController.js';
 import { customer360, changeTenantState, addCustomerContact, addCustomerNote } from '../../controllers/customerAdminController.js';
 import { getPulseRouting, listPulseLeads, savePulseRouting } from '../../controllers/pulseAdminController.js';
+import { listPublicEnquiries, updatePublicEnquiryFollowUp } from '../../controllers/publicEnquiryAdminController.js';
+import { downloadSupportAttachment } from '../../controllers/supportAttachmentController.js';
 
 export const adminRouter = Router();
 adminRouter.use(requireRoles('platform_admin'));
@@ -14,6 +16,9 @@ adminRouter.post('/customers/:customerId/contacts', addCustomerContact);
 adminRouter.post('/customers/:customerId/notes', addCustomerNote);
 adminRouter.get('/support-cases', listSupportCases);
 adminRouter.patch('/support-cases/:caseId', updateSupportCase);
+adminRouter.get('/support-cases/:caseId/attachments/:attachmentId/download', downloadSupportAttachment);
+adminRouter.get('/public-enquiries', listPublicEnquiries);
+adminRouter.patch('/public-enquiries/:enquiryId/follow-up', updatePublicEnquiryFollowUp);
 adminRouter.get('/plans', listPlans);
 adminRouter.get('/billing/stripe', getStripeSettings);
 adminRouter.put('/billing/stripe', requireStepUp, saveStripeSettings);

@@ -21,6 +21,7 @@ app.use('/v1/auth/mfa', rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standar
 app.use('/v1/public/contact-challenge', rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many verification requests from this network. Please wait and try again.' } }));
 app.use('/v1/public/contact-enquiries', rateLimit({ windowMs: 60 * 60 * 1000, limit: 12, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many contact submissions from this network. Please try again later.' } }));
 app.use('/v1/public/portfolio-readiness-pulse', rateLimit({ windowMs: 60 * 60 * 1000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many assessment submissions from this network. Please try again later.' } }));
+app.use('/v1/support/contact-enquiries', rateLimit({ windowMs: 60 * 60 * 1000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many support submissions from this account or network. Please try again later.' } }));
 app.use('/v1', rateLimit({ windowMs: 15 * 60 * 1000, limit: 400, standardHeaders: 'draft-8', legacyHeaders: false }), v1Router);
 app.use(notFound);
 app.use(errorHandler);

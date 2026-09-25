@@ -1,6 +1,6 @@
 import Joi from 'joi';
 import { Op } from 'sequelize';
-import { Organization, User, Subscription, ProductPlan, PlatformSetting, SupportCase, AuditLog } from '../models/index.js';
+import { Organization, User, Subscription, ProductPlan, PlatformSetting, SupportCase, SupportAttachment, AuditLog } from '../models/index.js';
 import { decryptConfiguration, encryptConfiguration } from '../services/encryption.js';
 import { env } from '../config/env.js';
 
@@ -41,7 +41,7 @@ export async function listCustomers(req, res, next) {
   } catch (error) { return next(error); }
 }
 
-export async function listSupportCases(req, res, next) { try { const records = await SupportCase.findAll({ include: [{ model: Organization, attributes: ['name', 'country'] }], order: [['priority', 'DESC'], ['createdAt', 'DESC']], limit: 100 }); return res.json({ data: records }); } catch (error) { return next(error); } }
+export async function listSupportCases(req, res, next) { try { const records = await SupportCase.findAll({ include: [{ model: Organization, attributes: ['name', 'country'] }, { model: SupportAttachment, attributes: ['id', 'originalFilename', 'contentType', 'sizeBytes', 'createdAt'] }], order: [['priority', 'DESC'], ['createdAt', 'DESC']], limit: 100 }); return res.json({ data: records }); } catch (error) { return next(error); } }
 
 export async function updateSupportCase(req, res, next) { try { const schema = Joi.object({ status: Joi.string().valid('new', 'in_progress', 'waiting_customer', 'resolved', 'closed'), priority: Joi.string().valid('low', 'normal', 'high', 'urgent') }); const { value, error } = schema.validate(req.body, { stripUnknown: true }); if (error) return res.status(422).json({ error: error.message }); const record = await SupportCase.findByPk(req.params.caseId); if (!record) return res.status(404).json({ error: 'Support case not found.' }); await record.update({ ...value, resolvedAt: ['resolved', 'closed'].includes(value.status) ? new Date() : record.resolvedAt, ownerId: req.auth.sub }); await platformAudit(req, 'support_case_updated', { caseId: record.id, status: record.status }); return res.json({ data: record }); } catch (error) { return next(error); } }
 
