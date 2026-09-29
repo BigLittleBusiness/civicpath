@@ -19,6 +19,7 @@ node db/migrations/005_public_pulse_leads.mjs
 node db/migrations/006_public_contact_and_altcha.mjs
 node db/migrations/007_enquiry_follow_up_and_support_attachments.mjs
 node db/migrations/008_council_proof_confirmation_delivery.mjs
+node db/migrations/009_strategy_delivery_workspace.mjs
 
 cd "$APP_DIR/frontend"
 npm ci --legacy-peer-deps

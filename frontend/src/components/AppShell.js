@@ -4,7 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { Icon } from './Icon';
 import { useAuth } from '../features/AuthContext';
 
-const councilNavItems = [['/dashboard', 'Overview', 'grid'], ['/portfolio', 'Project portfolio', 'folder'], ['/funding', 'Funding pathways', 'fund'], ['/grants', 'Grant lifecycle', 'check'], ['/reports', 'Reports', 'report']];
+const councilNavItems = [['/dashboard', 'Overview', 'grid'], ['/strategy-delivery', 'Strategy delivery', 'report'], ['/portfolio', 'Project portfolio', 'folder'], ['/funding', 'Funding pathways', 'fund'], ['/grants', 'Grant lifecycle', 'check'], ['/reports', 'Reports', 'report']];
 const adminNavItems = [['/admin', 'System Admin', 'grid']];
 
 export function AppShell({ children }) {

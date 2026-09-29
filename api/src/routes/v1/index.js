@@ -13,6 +13,36 @@ import { submitPortfolioReadinessPulse } from '../../controllers/publicPulseCont
 import { getPublicContactChallenge, submitPublicContactEnquiry } from '../../controllers/publicContactController.js';
 import { getSupportContactChallenge } from '../../controllers/supportContactController.js';
 import { submitSupportContactWithAttachments, uploadSupportAttachments } from '../../controllers/supportAttachmentController.js';
+import {
+  commitStrategyImport,
+  createDecision,
+  createDependency,
+  createEvidenceLink,
+  createFocusArea,
+  createFundingPosition,
+  createMeasure,
+  createMilestone,
+  createQuarterlyUpdate,
+  createReportSnapshot,
+  createReportingPeriod,
+  createRiskIssue,
+  createStakeholder,
+  createStrategy,
+  createStrategyAction,
+  getQuarterlyReport,
+  getStrategyAction,
+  linkActionProject,
+  listAlerts,
+  listStrategyWorkspace,
+  previewStrategyImport,
+  unlinkActionProject,
+  updateAlert,
+  updateDependency,
+  updateMilestone,
+  updateReportingPeriod,
+  updateStrategy,
+  updateStrategyAction,
+} from '../../controllers/strategyController.js';
 
 export const v1Router = Router();
 v1Router.get('/health', (_req, res) => res.json({ data: { service: 'civicpath-api', status: 'healthy' } }));
@@ -47,4 +77,32 @@ v1Router.get('/evidence', listEvidence);
 v1Router.post('/evidence', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createEvidence);
 v1Router.post('/imports/preview', requireRoles('org_admin', 'portfolio_manager'), previewImport);
 v1Router.post('/imports/commit', requireRoles('org_admin', 'portfolio_manager'), commitImport);
+v1Router.get('/strategy-workspace', listStrategyWorkspace);
+v1Router.post('/strategies', requireRoles('org_admin', 'portfolio_manager'), createStrategy);
+v1Router.patch('/strategies/:strategyId', requireRoles('org_admin', 'portfolio_manager'), updateStrategy);
+v1Router.post('/strategies/:strategyId/focus-areas', requireRoles('org_admin', 'portfolio_manager'), createFocusArea);
+v1Router.post('/strategies/:strategyId/actions', requireRoles('org_admin', 'portfolio_manager'), createStrategyAction);
+v1Router.post('/strategies/:strategyId/dependencies', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createDependency);
+v1Router.patch('/strategy-dependencies/:dependencyId', requireRoles('org_admin', 'portfolio_manager', 'contributor'), updateDependency);
+v1Router.post('/strategies/:strategyId/reporting-periods', requireRoles('org_admin', 'portfolio_manager'), createReportingPeriod);
+v1Router.get('/strategies/:strategyId/alerts', listAlerts);
+v1Router.post('/strategies/:strategyId/decisions', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createDecision);
+v1Router.post('/strategies/:strategyId/risks-issues', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createRiskIssue);
+v1Router.post('/strategies/:strategyId/imports/actions/preview', requireRoles('org_admin', 'portfolio_manager'), previewStrategyImport);
+v1Router.post('/strategies/:strategyId/imports/actions/commit', requireRoles('org_admin', 'portfolio_manager'), commitStrategyImport);
+v1Router.get('/strategy-actions/:actionId', getStrategyAction);
+v1Router.patch('/strategy-actions/:actionId', requireRoles('org_admin', 'portfolio_manager', 'contributor'), updateStrategyAction);
+v1Router.post('/strategy-actions/:actionId/projects', requireRoles('org_admin', 'portfolio_manager', 'contributor'), linkActionProject);
+v1Router.delete('/strategy-actions/:actionId/projects/:projectId', requireRoles('org_admin', 'portfolio_manager', 'contributor'), unlinkActionProject);
+v1Router.post('/strategy-actions/:actionId/milestones', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createMilestone);
+v1Router.patch('/strategy-milestones/:milestoneId', requireRoles('org_admin', 'portfolio_manager', 'contributor'), updateMilestone);
+v1Router.post('/strategy-actions/:actionId/measures', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createMeasure);
+v1Router.post('/strategy-actions/:actionId/stakeholders', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createStakeholder);
+v1Router.post('/strategy-actions/:actionId/funding-positions', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createFundingPosition);
+v1Router.post('/strategy-actions/:actionId/evidence-links', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createEvidenceLink);
+v1Router.patch('/strategy-reporting-periods/:periodId', requireRoles('org_admin', 'portfolio_manager'), updateReportingPeriod);
+v1Router.post('/strategy-reporting-periods/:periodId/action-updates', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createQuarterlyUpdate);
+v1Router.get('/strategy-reporting-periods/:periodId/report', getQuarterlyReport);
+v1Router.post('/strategy-reporting-periods/:periodId/report-snapshots', requireRoles('org_admin', 'portfolio_manager'), createReportSnapshot);
+v1Router.patch('/strategy-alerts/:alertId', requireRoles('org_admin', 'portfolio_manager'), updateAlert);
 v1Router.post('/demo/reset', requireRoles('org_admin'), resetDemo);

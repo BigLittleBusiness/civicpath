@@ -312,6 +312,277 @@ export const EvidenceItem = sequelize.define('EvidenceItem', {
   isVerified: { type: DataTypes.BOOLEAN, defaultValue: false },
 }, standard);
 
+// Strategy Delivery turns adopted council strategies into a governed action, dependency and reporting workspace.
+export const StrategicPlan = sequelize.define('StrategicPlan', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  name: { type: DataTypes.STRING(240), allowNull: false },
+  reference: { type: DataTypes.STRING(180), allowNull: true },
+  version: { type: DataTypes.STRING(80), allowNull: true },
+  description: { type: DataTypes.TEXT, allowNull: true },
+  startDate: { type: DataTypes.DATEONLY, allowNull: true },
+  endDate: { type: DataTypes.DATEONLY, allowNull: true },
+  reportingCadence: { type: DataTypes.ENUM('monthly', 'quarterly', 'half_yearly', 'annual'), allowNull: false, defaultValue: 'quarterly' },
+  status: { type: DataTypes.ENUM('draft', 'active', 'archived'), allowNull: false, defaultValue: 'draft' },
+  metadata: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+}, { ...standard, indexes: [{ name: 'idx_sp_org_status', fields: ['organization_id', 'status'] }, { name: 'idx_sp_org_dates', fields: ['organization_id', 'start_date', 'end_date'] }] });
+
+export const StrategyFocusArea = sequelize.define('StrategyFocusArea', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  strategyId: { type: DataTypes.UUID, allowNull: false },
+  code: { type: DataTypes.STRING(80), allowNull: false },
+  title: { type: DataTypes.STRING(200), allowNull: false },
+  description: { type: DataTypes.TEXT, allowNull: true },
+  sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  status: { type: DataTypes.ENUM('active', 'archived'), allowNull: false, defaultValue: 'active' },
+}, { ...standard, indexes: [{ name: 'uq_sfa_strategy_code', unique: true, fields: ['strategy_id', 'code'] }, { name: 'idx_sfa_org_strategy_sort', fields: ['organization_id', 'strategy_id', 'sort_order'] }] });
+
+export const StrategyStatusDefinition = sequelize.define('StrategyStatusDefinition', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  strategyId: { type: DataTypes.UUID, allowNull: false },
+  code: { type: DataTypes.STRING(60), allowNull: false },
+  label: { type: DataTypes.STRING(100), allowNull: false },
+  description: { type: DataTypes.STRING(500), allowNull: true },
+  category: { type: DataTypes.ENUM('not_started', 'on_track', 'attention', 'off_track', 'complete'), allowNull: false, defaultValue: 'not_started' },
+  color: { type: DataTypes.STRING(20), allowNull: false, defaultValue: '#7c8a86' },
+  sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  isDefault: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+}, { ...standard, indexes: [{ name: 'uq_ssd_strategy_code', unique: true, fields: ['strategy_id', 'code'] }, { name: 'idx_ssd_org_strategy_sort', fields: ['organization_id', 'strategy_id', 'sort_order'] }] });
+
+export const StrategyAction = sequelize.define('StrategyAction', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  strategyId: { type: DataTypes.UUID, allowNull: false },
+  focusAreaId: { type: DataTypes.UUID, allowNull: true },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  actionCode: { type: DataTypes.STRING(80), allowNull: true },
+  title: { type: DataTypes.STRING(300), allowNull: false },
+  description: { type: DataTypes.TEXT, allowNull: true },
+  contributingTeams: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
+  deliveryPathway: { type: DataTypes.ENUM('operational', 'capital', 'partnership', 'advocacy', 'policy', 'program', 'other'), allowNull: false, defaultValue: 'operational' },
+  status: { type: DataTypes.STRING(60), allowNull: false, defaultValue: 'not_started' },
+  statusRationale: { type: DataTypes.TEXT, allowNull: true },
+  startDate: { type: DataTypes.DATEONLY, allowNull: true },
+  targetDate: { type: DataTypes.DATEONLY, allowNull: true },
+  nextStep: { type: DataTypes.TEXT, allowNull: true },
+  nextDecision: { type: DataTypes.TEXT, allowNull: true },
+  nextDecisionDueAt: { type: DataTypes.DATEONLY, allowNull: true },
+  estimatedCost: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
+  securedFunding: { type: DataTypes.DECIMAL(14, 2), allowNull: false, defaultValue: 0 },
+  currencyCode: { type: DataTypes.CHAR(3), allowNull: false, defaultValue: 'AUD', validate: { isIn: [['AUD', 'NZD']] } },
+  budgetStatus: { type: DataTypes.ENUM('not_costed', 'indicative', 'approved', 'funded', 'not_required'), allowNull: false, defaultValue: 'not_costed' },
+  readinessScore: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, validate: { min: 0, max: 100 } },
+  reportingPriority: { type: DataTypes.ENUM('standard', 'executive', 'critical'), allowNull: false, defaultValue: 'standard' },
+  isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+}, { ...standard, indexes: [{ name: 'uq_sa_strategy_code', unique: true, fields: ['strategy_id', 'action_code'] }, { name: 'idx_sa_org_strategy_status', fields: ['organization_id', 'strategy_id', 'status'] }, { name: 'idx_sa_org_target', fields: ['organization_id', 'target_date'] }] });
+
+export const StrategyActionProject = sequelize.define('StrategyActionProject', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  actionId: { type: DataTypes.UUID, allowNull: false },
+  projectId: { type: DataTypes.UUID, allowNull: false },
+  relationshipType: { type: DataTypes.ENUM('primary_delivery', 'contributing', 'evidence', 'dependency'), allowNull: false, defaultValue: 'primary_delivery' },
+}, { ...standard, indexes: [{ name: 'uq_sap_action_project', unique: true, fields: ['action_id', 'project_id'] }, { name: 'idx_sap_org_project', fields: ['organization_id', 'project_id'] }] });
+
+export const ActionMilestone = sequelize.define('ActionMilestone', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  actionId: { type: DataTypes.UUID, allowNull: false },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  title: { type: DataTypes.STRING(240), allowNull: false },
+  description: { type: DataTypes.TEXT, allowNull: true },
+  dueDate: { type: DataTypes.DATEONLY, allowNull: true },
+  completedAt: { type: DataTypes.DATE, allowNull: true },
+  status: { type: DataTypes.ENUM('not_started', 'in_progress', 'blocked', 'complete'), allowNull: false, defaultValue: 'not_started' },
+  completionEvidence: { type: DataTypes.TEXT, allowNull: true },
+  varianceExplanation: { type: DataTypes.TEXT, allowNull: true },
+}, { ...standard, indexes: [{ name: 'idx_am_org_action_due', fields: ['organization_id', 'action_id', 'due_date'] }, { name: 'idx_am_org_status_due', fields: ['organization_id', 'status', 'due_date'] }] });
+
+export const ActionDependency = sequelize.define('ActionDependency', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  strategyId: { type: DataTypes.UUID, allowNull: false },
+  dependentType: { type: DataTypes.ENUM('action', 'project', 'milestone'), allowNull: false, defaultValue: 'action' },
+  dependentId: { type: DataTypes.UUID, allowNull: false },
+  predecessorType: { type: DataTypes.ENUM('action', 'project', 'milestone'), allowNull: false, defaultValue: 'action' },
+  predecessorId: { type: DataTypes.UUID, allowNull: false },
+  dependencyType: { type: DataTypes.ENUM('decision', 'funding', 'land', 'planning_approval', 'procurement', 'capability', 'evidence', 'partner_commitment', 'infrastructure', 'policy', 'legislative', 'community_engagement', 'other'), allowNull: false, defaultValue: 'other' },
+  severity: { type: DataTypes.ENUM('monitor', 'material', 'critical'), allowNull: false, defaultValue: 'material' },
+  status: { type: DataTypes.ENUM('open', 'progressing', 'resolved', 'accepted_risk', 'not_applicable'), allowNull: false, defaultValue: 'open' },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  dueDate: { type: DataTypes.DATEONLY, allowNull: true },
+  escalationAt: { type: DataTypes.DATE, allowNull: true },
+  resolutionDate: { type: DataTypes.DATE, allowNull: true },
+  detail: { type: DataTypes.TEXT, allowNull: true },
+  workaround: { type: DataTypes.TEXT, allowNull: true },
+  resolutionEvidence: { type: DataTypes.TEXT, allowNull: true },
+  resolutionNote: { type: DataTypes.TEXT, allowNull: true },
+}, { ...standard, indexes: [{ name: 'uq_ad_edge', unique: true, fields: ['dependent_type', 'dependent_id', 'predecessor_type', 'predecessor_id'] }, { name: 'idx_ad_org_strategy_status_sev', fields: ['organization_id', 'strategy_id', 'status', 'severity'] }, { name: 'idx_ad_org_owner_due', fields: ['organization_id', 'owner_id', 'due_date'] }] });
+
+export const QuarterlyReportingPeriod = sequelize.define('QuarterlyReportingPeriod', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  strategyId: { type: DataTypes.UUID, allowNull: false },
+  finalisedBy: { type: DataTypes.UUID, allowNull: true },
+  label: { type: DataTypes.STRING(120), allowNull: false },
+  financialYear: { type: DataTypes.STRING(20), allowNull: false },
+  quarter: { type: DataTypes.ENUM('Q1', 'Q2', 'Q3', 'Q4'), allowNull: false },
+  startsOn: { type: DataTypes.DATEONLY, allowNull: false },
+  endsOn: { type: DataTypes.DATEONLY, allowNull: false },
+  updateDueOn: { type: DataTypes.DATEONLY, allowNull: true },
+  status: { type: DataTypes.ENUM('preparing', 'open', 'locked', 'finalised'), allowNull: false, defaultValue: 'preparing' },
+  openedAt: { type: DataTypes.DATE, allowNull: true },
+  finalisedAt: { type: DataTypes.DATE, allowNull: true },
+}, { ...standard, indexes: [{ name: 'uq_qrp_strategy_period', unique: true, fields: ['strategy_id', 'financial_year', 'quarter'] }, { name: 'idx_qrp_org_strategy_end', fields: ['organization_id', 'strategy_id', 'ends_on'] }] });
+
+export const QuarterlyActionUpdate = sequelize.define('QuarterlyActionUpdate', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  actionId: { type: DataTypes.UUID, allowNull: false },
+  reportingPeriodId: { type: DataTypes.UUID, allowNull: false },
+  submittedBy: { type: DataTypes.UUID, allowNull: true },
+  status: { type: DataTypes.STRING(60), allowNull: false },
+  movement: { type: DataTypes.ENUM('advanced', 'no_change', 'slipped', 'completed', 'new_risk'), allowNull: false, defaultValue: 'advanced' },
+  achievements: { type: DataTypes.TEXT, allowNull: true },
+  evidenceSummary: { type: DataTypes.TEXT, allowNull: true },
+  riskSummary: { type: DataTypes.TEXT, allowNull: true },
+  decisionsRequired: { type: DataTypes.TEXT, allowNull: true },
+  nextQuarterCommitments: { type: DataTypes.TEXT, allowNull: true },
+  submittedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+  version: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
+}, { ...standard, indexes: [{ name: 'uq_qau_action_period', unique: true, fields: ['action_id', 'reporting_period_id'] }, { name: 'idx_qau_org_period_status', fields: ['organization_id', 'reporting_period_id', 'status'] }] });
+
+export const StrategyMeasure = sequelize.define('StrategyMeasure', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  actionId: { type: DataTypes.UUID, allowNull: false },
+  name: { type: DataTypes.STRING(200), allowNull: false },
+  description: { type: DataTypes.TEXT, allowNull: true },
+  unit: { type: DataTypes.STRING(80), allowNull: true },
+  baselineValue: { type: DataTypes.STRING(120), allowNull: true },
+  baselineDate: { type: DataTypes.DATEONLY, allowNull: true },
+  targetValue: { type: DataTypes.STRING(120), allowNull: true },
+  targetDate: { type: DataTypes.DATEONLY, allowNull: true },
+  currentValue: { type: DataTypes.STRING(120), allowNull: true },
+  lastMeasuredAt: { type: DataTypes.DATEONLY, allowNull: true },
+  reportingFrequency: { type: DataTypes.ENUM('monthly', 'quarterly', 'half_yearly', 'annual', 'ad_hoc'), allowNull: false, defaultValue: 'quarterly' },
+  evidence: { type: DataTypes.TEXT, allowNull: true },
+}, { ...standard, indexes: [{ name: 'idx_sm_org_action', fields: ['organization_id', 'action_id'] }] });
+
+export const StrategyDecision = sequelize.define('StrategyDecision', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  strategyId: { type: DataTypes.UUID, allowNull: false },
+  actionId: { type: DataTypes.UUID, allowNull: true },
+  projectId: { type: DataTypes.UUID, allowNull: true },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  title: { type: DataTypes.STRING(260), allowNull: false },
+  recommendation: { type: DataTypes.TEXT, allowNull: true },
+  decisionStatus: { type: DataTypes.ENUM('draft', 'required', 'approved', 'declined', 'deferred', 'implemented'), allowNull: false, defaultValue: 'draft' },
+  decisionMaker: { type: DataTypes.STRING(180), allowNull: true },
+  dueDate: { type: DataTypes.DATEONLY, allowNull: true },
+  decidedAt: { type: DataTypes.DATE, allowNull: true },
+  decisionText: { type: DataTypes.TEXT, allowNull: true },
+  followUpAction: { type: DataTypes.TEXT, allowNull: true },
+}, { ...standard, indexes: [{ name: 'idx_sd_org_strategy_status_due', fields: ['organization_id', 'strategy_id', 'decision_status', 'due_date'] }] });
+
+export const StrategyStakeholder = sequelize.define('StrategyStakeholder', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  actionId: { type: DataTypes.UUID, allowNull: false },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  name: { type: DataTypes.STRING(180), allowNull: false },
+  organisationName: { type: DataTypes.STRING(180), allowNull: true },
+  stakeholderType: { type: DataTypes.ENUM('internal', 'government', 'business', 'community', 'delivery_partner', 'investor', 'other'), allowNull: false, defaultValue: 'other' },
+  roleDescription: { type: DataTypes.TEXT, allowNull: true },
+  influence: { type: DataTypes.ENUM('low', 'medium', 'high'), allowNull: false, defaultValue: 'medium' },
+  engagementStatus: { type: DataTypes.ENUM('not_started', 'engaged', 'supportive', 'watching', 'at_risk'), allowNull: false, defaultValue: 'not_started' },
+  nextEngagementAt: { type: DataTypes.DATEONLY, allowNull: true },
+}, { ...standard, indexes: [{ name: 'idx_ss_org_action_engage', fields: ['organization_id', 'action_id', 'next_engagement_at'] }] });
+
+export const StrategyRiskIssue = sequelize.define('StrategyRiskIssue', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  strategyId: { type: DataTypes.UUID, allowNull: false },
+  actionId: { type: DataTypes.UUID, allowNull: true },
+  dependencyId: { type: DataTypes.UUID, allowNull: true },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  issueType: { type: DataTypes.ENUM('risk', 'issue'), allowNull: false, defaultValue: 'risk' },
+  title: { type: DataTypes.STRING(260), allowNull: false },
+  detail: { type: DataTypes.TEXT, allowNull: true },
+  status: { type: DataTypes.ENUM('open', 'monitoring', 'mitigating', 'resolved', 'accepted'), allowNull: false, defaultValue: 'open' },
+  impact: { type: DataTypes.INTEGER, allowNull: true, validate: { min: 1, max: 5 } },
+  likelihood: { type: DataTypes.INTEGER, allowNull: true, validate: { min: 1, max: 5 } },
+  mitigation: { type: DataTypes.TEXT, allowNull: true },
+  dueDate: { type: DataTypes.DATEONLY, allowNull: true },
+  resolvedAt: { type: DataTypes.DATE, allowNull: true },
+}, { ...standard, indexes: [{ name: 'idx_sri_org_strategy_status', fields: ['organization_id', 'strategy_id', 'status'] }, { name: 'idx_sri_org_owner_due', fields: ['organization_id', 'owner_id', 'due_date'] }] });
+
+export const ActionFundingPosition = sequelize.define('ActionFundingPosition', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  actionId: { type: DataTypes.UUID, allowNull: false },
+  sourceName: { type: DataTypes.STRING(200), allowNull: false },
+  sourceType: { type: DataTypes.ENUM('grant', 'budget', 'partner', 'private', 'advocacy', 'other'), allowNull: false, defaultValue: 'other' },
+  amount: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
+  currencyCode: { type: DataTypes.CHAR(3), allowNull: false, defaultValue: 'AUD', validate: { isIn: [['AUD', 'NZD']] } },
+  status: { type: DataTypes.ENUM('identified', 'preparing', 'submitted', 'approved', 'secured', 'not_proceeding'), allowNull: false, defaultValue: 'identified' },
+  dueDate: { type: DataTypes.DATEONLY, allowNull: true },
+  note: { type: DataTypes.TEXT, allowNull: true },
+}, { ...standard, indexes: [{ name: 'idx_afp_org_action_status', fields: ['organization_id', 'action_id', 'status'] }] });
+
+export const ActionEvidenceLink = sequelize.define('ActionEvidenceLink', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  actionId: { type: DataTypes.UUID, allowNull: false },
+  title: { type: DataTypes.STRING(240), allowNull: false },
+  evidenceType: { type: DataTypes.ENUM('document', 'metric', 'decision_record', 'link', 'other'), allowNull: false, defaultValue: 'document' },
+  externalUrl: { type: DataTypes.STRING(1000), allowNull: true, validate: { isUrl: true } },
+  source: { type: DataTypes.STRING(240), allowNull: true },
+  isVerified: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+}, { ...standard, indexes: [{ name: 'idx_ael_org_action_type', fields: ['organization_id', 'action_id', 'evidence_type'] }] });
+
+export const StrategyReportSnapshot = sequelize.define('StrategyReportSnapshot', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  strategyId: { type: DataTypes.UUID, allowNull: false },
+  reportingPeriodId: { type: DataTypes.UUID, allowNull: true },
+  preparedBy: { type: DataTypes.UUID, allowNull: true },
+  reviewedBy: { type: DataTypes.UUID, allowNull: true },
+  approvedBy: { type: DataTypes.UUID, allowNull: true },
+  reportType: { type: DataTypes.ENUM('quarterly', 'annual'), allowNull: false, defaultValue: 'quarterly' },
+  version: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
+  status: { type: DataTypes.ENUM('draft', 'reviewed', 'approved'), allowNull: false, defaultValue: 'draft' },
+  content: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+  narrative: { type: DataTypes.TEXT, allowNull: true },
+  reviewedAt: { type: DataTypes.DATE, allowNull: true },
+  approvedAt: { type: DataTypes.DATE, allowNull: true },
+}, { ...standard, indexes: [{ name: 'idx_srs_org_strategy_period_type', fields: ['organization_id', 'strategy_id', 'reporting_period_id', 'report_type'] }] });
+
+export const StrategyAlert = sequelize.define('StrategyAlert', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  strategyId: { type: DataTypes.UUID, allowNull: false },
+  actionId: { type: DataTypes.UUID, allowNull: true },
+  dependencyId: { type: DataTypes.UUID, allowNull: true },
+  reportingPeriodId: { type: DataTypes.UUID, allowNull: true },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  alertType: { type: DataTypes.ENUM('critical_dependency_unowned', 'critical_dependency_overdue', 'milestone_overdue', 'quarterly_update_missing', 'decision_due', 'measure_update_due'), allowNull: false },
+  severity: { type: DataTypes.ENUM('attention', 'critical'), allowNull: false, defaultValue: 'attention' },
+  title: { type: DataTypes.STRING(260), allowNull: false },
+  detail: { type: DataTypes.TEXT, allowNull: true },
+  dueDate: { type: DataTypes.DATEONLY, allowNull: true },
+  status: { type: DataTypes.ENUM('open', 'dismissed', 'resolved'), allowNull: false, defaultValue: 'open' },
+  dedupeKey: { type: DataTypes.STRING(255), allowNull: false, unique: true },
+  firstDetectedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+  lastDetectedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+  resolvedAt: { type: DataTypes.DATE, allowNull: true },
+}, { ...standard, indexes: [{ name: 'idx_sal_org_strategy_status_sev', fields: ['organization_id', 'strategy_id', 'status', 'severity'] }, { name: 'idx_sal_org_owner_due', fields: ['organization_id', 'owner_id', 'due_date'] }] });
+
 export const AuditLog = sequelize.define('AuditLog', {
   id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
   organizationId: { type: DataTypes.UUID, allowNull: false },
@@ -513,6 +784,68 @@ Grant.hasMany(WorkItem, { foreignKey: 'grantId' });
 WorkItem.belongsTo(User, { as: 'owner', foreignKey: 'ownerId' });
 CivicProject.hasMany(EvidenceItem, { foreignKey: 'projectId' });
 Grant.hasMany(EvidenceItem, { foreignKey: 'grantId' });
+Organization.hasMany(StrategicPlan, { foreignKey: 'organizationId' });
+StrategicPlan.belongsTo(Organization, { foreignKey: 'organizationId' });
+StrategicPlan.belongsTo(User, { as: 'strategyOwner', foreignKey: 'ownerId' });
+StrategicPlan.hasMany(StrategyFocusArea, { foreignKey: 'strategyId' });
+StrategyFocusArea.belongsTo(StrategicPlan, { foreignKey: 'strategyId' });
+StrategicPlan.hasMany(StrategyStatusDefinition, { foreignKey: 'strategyId' });
+StrategyStatusDefinition.belongsTo(StrategicPlan, { foreignKey: 'strategyId' });
+StrategicPlan.hasMany(StrategyAction, { foreignKey: 'strategyId' });
+StrategyAction.belongsTo(StrategicPlan, { foreignKey: 'strategyId' });
+StrategyFocusArea.hasMany(StrategyAction, { foreignKey: 'focusAreaId' });
+StrategyAction.belongsTo(StrategyFocusArea, { foreignKey: 'focusAreaId' });
+StrategyAction.belongsTo(User, { as: 'actionOwner', foreignKey: 'ownerId' });
+StrategyAction.hasMany(StrategyActionProject, { foreignKey: 'actionId' });
+StrategyActionProject.belongsTo(StrategyAction, { foreignKey: 'actionId' });
+CivicProject.hasMany(StrategyActionProject, { foreignKey: 'projectId' });
+StrategyActionProject.belongsTo(CivicProject, { foreignKey: 'projectId' });
+StrategyAction.belongsToMany(CivicProject, { through: StrategyActionProject, foreignKey: 'actionId', otherKey: 'projectId', as: 'linkedProjects' });
+CivicProject.belongsToMany(StrategyAction, { through: StrategyActionProject, foreignKey: 'projectId', otherKey: 'actionId', as: 'strategyActions' });
+StrategyAction.hasMany(ActionMilestone, { foreignKey: 'actionId' });
+ActionMilestone.belongsTo(StrategyAction, { foreignKey: 'actionId' });
+ActionMilestone.belongsTo(User, { as: 'milestoneOwner', foreignKey: 'ownerId' });
+StrategicPlan.hasMany(ActionDependency, { foreignKey: 'strategyId' });
+ActionDependency.belongsTo(StrategicPlan, { foreignKey: 'strategyId' });
+ActionDependency.belongsTo(User, { as: 'dependencyOwner', foreignKey: 'ownerId' });
+StrategicPlan.hasMany(QuarterlyReportingPeriod, { foreignKey: 'strategyId' });
+QuarterlyReportingPeriod.belongsTo(StrategicPlan, { foreignKey: 'strategyId' });
+QuarterlyReportingPeriod.belongsTo(User, { as: 'periodFinalisedBy', foreignKey: 'finalisedBy' });
+StrategyAction.hasMany(QuarterlyActionUpdate, { foreignKey: 'actionId' });
+QuarterlyActionUpdate.belongsTo(StrategyAction, { foreignKey: 'actionId' });
+QuarterlyActionUpdate.belongsTo(QuarterlyReportingPeriod, { foreignKey: 'reportingPeriodId' });
+QuarterlyActionUpdate.belongsTo(User, { as: 'updateSubmittedBy', foreignKey: 'submittedBy' });
+StrategyAction.hasMany(StrategyMeasure, { foreignKey: 'actionId' });
+StrategyMeasure.belongsTo(StrategyAction, { foreignKey: 'actionId' });
+StrategicPlan.hasMany(StrategyDecision, { foreignKey: 'strategyId' });
+StrategyDecision.belongsTo(StrategicPlan, { foreignKey: 'strategyId' });
+StrategyDecision.belongsTo(StrategyAction, { foreignKey: 'actionId' });
+StrategyDecision.belongsTo(CivicProject, { foreignKey: 'projectId' });
+StrategyDecision.belongsTo(User, { as: 'decisionOwner', foreignKey: 'ownerId' });
+StrategyAction.hasMany(StrategyStakeholder, { foreignKey: 'actionId' });
+StrategyStakeholder.belongsTo(StrategyAction, { foreignKey: 'actionId' });
+StrategyStakeholder.belongsTo(User, { as: 'stakeholderOwner', foreignKey: 'ownerId' });
+StrategicPlan.hasMany(StrategyRiskIssue, { foreignKey: 'strategyId' });
+StrategyRiskIssue.belongsTo(StrategicPlan, { foreignKey: 'strategyId' });
+StrategyRiskIssue.belongsTo(StrategyAction, { foreignKey: 'actionId' });
+StrategyRiskIssue.belongsTo(ActionDependency, { foreignKey: 'dependencyId' });
+StrategyRiskIssue.belongsTo(User, { as: 'riskOwner', foreignKey: 'ownerId' });
+StrategyAction.hasMany(ActionFundingPosition, { foreignKey: 'actionId' });
+ActionFundingPosition.belongsTo(StrategyAction, { foreignKey: 'actionId' });
+StrategyAction.hasMany(ActionEvidenceLink, { foreignKey: 'actionId' });
+ActionEvidenceLink.belongsTo(StrategyAction, { foreignKey: 'actionId' });
+StrategicPlan.hasMany(StrategyReportSnapshot, { foreignKey: 'strategyId' });
+StrategyReportSnapshot.belongsTo(StrategicPlan, { foreignKey: 'strategyId' });
+StrategyReportSnapshot.belongsTo(QuarterlyReportingPeriod, { foreignKey: 'reportingPeriodId' });
+StrategyReportSnapshot.belongsTo(User, { as: 'reportPreparedBy', foreignKey: 'preparedBy' });
+StrategyReportSnapshot.belongsTo(User, { as: 'reportReviewedBy', foreignKey: 'reviewedBy' });
+StrategyReportSnapshot.belongsTo(User, { as: 'reportApprovedBy', foreignKey: 'approvedBy' });
+StrategicPlan.hasMany(StrategyAlert, { foreignKey: 'strategyId' });
+StrategyAlert.belongsTo(StrategicPlan, { foreignKey: 'strategyId' });
+StrategyAlert.belongsTo(StrategyAction, { foreignKey: 'actionId' });
+StrategyAlert.belongsTo(ActionDependency, { foreignKey: 'dependencyId' });
+StrategyAlert.belongsTo(QuarterlyReportingPeriod, { foreignKey: 'reportingPeriodId' });
+StrategyAlert.belongsTo(User, { as: 'alertOwner', foreignKey: 'ownerId' });
 PublicLead.hasMany(PulseLeadSession, { foreignKey: 'leadId' });
 PulseLeadSession.belongsTo(PublicLead, { foreignKey: 'leadId' });
 PublicLead.hasMany(PulseLeadConsent, { foreignKey: 'leadId' });
@@ -522,4 +855,4 @@ PulseLeadResult.belongsTo(PublicLead, { foreignKey: 'leadId' });
 PublicLead.hasMany(PulseLeadNotification, { foreignKey: 'leadId' });
 PulseLeadNotification.belongsTo(PublicLead, { foreignKey: 'leadId' });
 PublicContactEnquiry.belongsTo(User, { as: 'followUpOwner', foreignKey: 'followUpOwnerId' });
-export const models = { Organization, User, ProductPlan, Subscription, IntegrationConnection, PlatformSetting, SupportCase, SupportAttachment, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, AuditLog, PublicLead, PulseLeadSession, PulseLeadConsent, PulseLeadResult, PulseLeadNotification, PublicFormChallenge, PublicContactEnquiry };
+export const models = { Organization, User, ProductPlan, Subscription, IntegrationConnection, PlatformSetting, SupportCase, SupportAttachment, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, StrategicPlan, StrategyFocusArea, StrategyStatusDefinition, StrategyAction, StrategyActionProject, ActionMilestone, ActionDependency, QuarterlyReportingPeriod, QuarterlyActionUpdate, StrategyMeasure, StrategyDecision, StrategyStakeholder, StrategyRiskIssue, ActionFundingPosition, ActionEvidenceLink, StrategyReportSnapshot, StrategyAlert, AuditLog, PublicLead, PulseLeadSession, PulseLeadConsent, PulseLeadResult, PulseLeadNotification, PublicFormChallenge, PublicContactEnquiry };
