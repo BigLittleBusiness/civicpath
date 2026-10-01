@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { User, AuditLog } from '../models/index.js';
 import { env } from '../config/env.js';
 import { decryptConfiguration, encryptConfiguration } from '../services/encryption.js';
-import { createTotpSecret, createQrCode, verifyTotp, createRecoveryCodes, hashRecoveryCodes, consumeRecoveryCode } from '../services/mfa.js';
+import { createTotpSecret, buildOtpauthUrl, createQrCode, verifyTotp, createRecoveryCodes, hashRecoveryCodes, consumeRecoveryCode } from '../services/mfa.js';
 
 const loginSchema = Joi.object({ email: Joi.string().email().required(), password: Joi.string().min(8).required() });
 const codeSchema = Joi.object({ code: Joi.string().trim().min(6).max(32).required() });
@@ -61,10 +61,14 @@ export async function beginMfaSetup(req, res, next) {
     if (req.auth.purpose !== 'setup') return res.status(403).json({ error: 'Authenticator setup is not available for this session.' });
     const user = await User.findByPk(req.auth.sub);
     if (!user || user.role !== 'platform_admin') return res.status(403).json({ error: 'System Administrator access is required.' });
-    const secret = createTotpSecret({ issuer: env.mfaIssuer, accountName: user.email });
-    await user.update({ mfaRequired: true, mfaEnabled: false, mfaSecretEncrypted: encryptConfiguration({ secret: secret.base32 }) });
-    const qrCodeDataUrl = await createQrCode(secret.otpauth_url);
-    return res.json({ data: { qrCodeDataUrl, manualKey: secret.base32, issuer: env.mfaIssuer, account: user.email } });
+    // Reuse a pending (unconfirmed) secret so repeated setup calls show the same QR code instead of invalidating the one already scanned.
+    let base32 = !user.mfaEnabled && user.mfaSecretEncrypted ? decryptConfiguration(user.mfaSecretEncrypted).secret : null;
+    if (!base32) {
+      base32 = createTotpSecret({ issuer: env.mfaIssuer, accountName: user.email }).base32;
+      await user.update({ mfaRequired: true, mfaEnabled: false, mfaSecretEncrypted: encryptConfiguration({ secret: base32 }) });
+    }
+    const qrCodeDataUrl = await createQrCode(buildOtpauthUrl({ secret: base32, issuer: env.mfaIssuer, accountName: user.email }));
+    return res.json({ data: { qrCodeDataUrl, manualKey: base32, issuer: env.mfaIssuer, account: user.email } });
   } catch (error) { return next(error); }
 }
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../features/AuthContext';
@@ -14,7 +14,12 @@ export default function MfaPage() {
   const [submitting, setSubmitting] = useState(false);
   const [recoveryCodes, setRecoveryCodes] = useState([]);
 
+  const initialised = useRef(false);
+
   useEffect(() => {
+    // StrictMode runs effects twice in development; a second setup call would issue a new secret.
+    if (initialised.current) return;
+    initialised.current = true;
     (async () => {
       try {
         const pending = await api.get('/auth/mfa/pending');

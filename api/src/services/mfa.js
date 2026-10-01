@@ -9,6 +9,10 @@ export function createTotpSecret({ issuer, accountName }) {
   return speakeasy.generateSecret({ length: 20, name: `${issuer}:${accountName}`, issuer });
 }
 
+export function buildOtpauthUrl({ secret, issuer, accountName }) {
+  return speakeasy.otpauthURL({ secret, encoding: 'base32', label: `${issuer}:${accountName}`, issuer });
+}
+
 export async function createQrCode(otpauthUrl) { return QRCode.toDataURL(otpauthUrl, { errorCorrectionLevel: 'M', margin: 1, width: 240 }); }
 
 export function verifyTotp({ secret, code }) {
