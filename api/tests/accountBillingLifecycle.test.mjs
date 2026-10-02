@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { accountActivatedMessage, passwordResetMessage, registrationReceiptMessage } from '../src/services/accountNotifications.js';
+import { accountActivatedMessage, passwordResetMessage, refundRequestedMessage, registrationReceiptMessage } from '../src/services/accountNotifications.js';
 import { BillingConfigurationError, priceIdForPlan } from '../src/services/stripeBilling.js';
+
+function assertQuartermarkEmail(message) {
+  assert.match(message.html, /alt="CivicPath"/);
+  assert.match(message.html, /https?:\/\/[^"']+\/civicpath-quartermark\.png/);
+  assert.match(message.html, /#040404/);
+  assert.match(message.html, /#163133/);
+  assert.match(message.html, /#0D6A55/);
+  assert.match(message.html, /#CD7C4E/);
+}
 
 test('registration and activation messages set clear CivicPath account expectations', () => {
   const receipt = registrationReceiptMessage({ firstName: 'Taylor', organisationName: 'Example Council', planName: 'CivicPath Core', checkoutUrl: 'https://checkout.stripe.test/example' });
@@ -9,15 +18,22 @@ test('registration and activation messages set clear CivicPath account expectati
   assert.equal(receipt.subject, 'CivicPath - Complete your secure subscription checkout');
   assert.match(receipt.text, /secure Stripe checkout/);
   assert.match(receipt.text, /activated only after Stripe confirms payment/);
+  assertQuartermarkEmail(receipt);
   assert.equal(activation.subject, 'CivicPath - Your Council workspace is active');
   assert.match(activation.text, /Stripe has confirmed payment/);
+  assertQuartermarkEmail(activation);
 });
 
-test('password reset messages use a direct, time-bound account link', () => {
+test('password reset and refund messages use the shared Quartermark email shell', () => {
   const reset = passwordResetMessage({ firstName: 'Taylor', resetUrl: 'https://app.civicpath.com.au/reset-password?token=abc' });
+  const refund = refundRequestedMessage({ firstName: 'Taylor', amountLabel: '$495.00', organisationName: 'Example Council' });
   assert.equal(reset.subject, 'CivicPath - Reset your password');
   assert.match(reset.text, /60 minutes/);
   assert.match(reset.html, /Reset password/);
+  assertQuartermarkEmail(reset);
+  assert.equal(refund.subject, 'CivicPath - Refund request received');
+  assert.match(refund.text, /original payment method/);
+  assertQuartermarkEmail(refund);
 });
 
 test('Stripe price selection permits only an approved mapped plan', () => {

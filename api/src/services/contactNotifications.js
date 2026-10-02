@@ -1,14 +1,11 @@
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { Op } from 'sequelize';
 import { PublicContactEnquiry } from '../models/index.js';
+import { brandedEmail, emailCallout, escapeEmailHtml } from './emailBranding.js';
 import { getPulseRoutingSettings } from './pulseNotifications.js';
 
 const contactMailbox = () => Buffer.from('aGVsbG9AYmlnbGl0dGxlYnVzaW5lc3MuY29t', 'base64').toString('utf8');
 const MAX_ATTEMPTS = 3;
-
-function escapeHtml(value = '') {
-  return String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
-}
 
 function titleFor(type, category) {
   const publicTitles = { sales: 'Sales enquiry', council_proof: 'Council Proof enquiry', general: 'General enquiry' };
@@ -41,15 +38,23 @@ export function contactEmailMessage(enquiry) {
   const title = titleFor(enquiry.enquiryType, enquiry.category);
   const subject = `CivicPath - ${title}`;
   const text = `A CivicPath ${title.toLowerCase()} has been received.\n\nName: ${enquiry.firstName} ${enquiry.lastName}\nEmail: ${enquiry.email}\nCouncil or organisation: ${enquiry.councilName || 'Not supplied'}\nRole: ${enquiry.role || 'Not supplied'}\n\nMessage:\n${enquiry.message}\n\nRecorded: ${enquiry.createdAt?.toISOString?.() || new Date().toISOString()}`;
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif;color:#1c2925;line-height:1.55"><p style="color:#173f36;font-weight:700">CivicPath - ${escapeHtml(title)}</p><p><strong>Name:</strong> ${escapeHtml(`${enquiry.firstName} ${enquiry.lastName}`)}<br/><strong>Email:</strong> ${escapeHtml(enquiry.email)}<br/><strong>Council or organisation:</strong> ${escapeHtml(enquiry.councilName || 'Not supplied')}<br/><strong>Role:</strong> ${escapeHtml(enquiry.role || 'Not supplied')}</p><p><strong>Message</strong><br/>${escapeHtml(enquiry.message).replace(/\n/g, '<br/>')}</p></div>`;
+  const html = brandedEmail({
+    heading: title,
+    preheader: `A new CivicPath ${title.toLowerCase()} has been received.`,
+    contentHtml: `<p style="margin:0 0 18px"><strong>Name:</strong> ${escapeEmailHtml(`${enquiry.firstName} ${enquiry.lastName}`)}<br><strong>Email:</strong> ${escapeEmailHtml(enquiry.email)}<br><strong>Council or organisation:</strong> ${escapeEmailHtml(enquiry.councilName || 'Not supplied')}<br><strong>Role:</strong> ${escapeEmailHtml(enquiry.role || 'Not supplied')}</p>${emailCallout({ title: 'Message', contentHtml: `<p style="margin:0">${escapeEmailHtml(enquiry.message).replace(/\n/g, '<br>')}</p>` })}`,
+  });
   return { subject, text, html };
 }
 
 export function councilProofConfirmationMessage(enquiry) {
-  const name = escapeHtml(enquiry.firstName || 'there');
+  const firstName = enquiry.firstName || 'there';
   const subject = 'CivicPath - Your Council Proof enquiry';
-  const text = `Hi ${enquiry.firstName || 'there'},\n\nThank you for your interest in a CivicPath Council Proof. We have received your enquiry and will review the context you shared.\n\nYour $495 conversion credit\nA Council Proof is a focused 60-day engagement for one live portfolio. If your Council proceeds to its first annual CivicPath subscription within 30 days of the final Council Proof review, the full $495 paid Council Proof fee is applied as a credit against that annual subscription invoice.\n\nSubmitting this enquiry does not create an invoice, payment obligation or subscription. The Proof scope, timing and payment are agreed with your Council before the engagement begins.\n\nCivicPath does not promise funding outcomes. The Proof is designed to give your Council a clearer, decision-ready view of the selected portfolio.\n\nRegards,\nCivicPath`;
-  const html = `<!doctype html><html lang="en"><body style="margin:0;padding:0;background:#f4f0e8;color:#1c2925;font-family:Arial,Helvetica,sans-serif"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center" style="padding:32px 16px"><table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;background:#fff;border-radius:16px;overflow:hidden"><tr><td style="padding:28px 32px 18px;background:#173f36;color:#fff"><p style="margin:0 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#b9d5c4">CivicPath</p><h1 style="margin:0;font-size:28px;line-height:1.2">Your Council Proof enquiry is received</h1></td></tr><tr><td style="padding:30px 32px;font-size:16px;line-height:1.55"><p style="margin:0 0 18px">Hi ${name},</p><p style="margin:0 0 22px">Thank you for your interest in a CivicPath Council Proof. We will review the context you shared and come back with the most useful next practical step.</p><div style="margin:0 0 24px;padding:18px 20px;border-left:4px solid #1d8063;background:#edf7f0"><p style="margin:0 0 7px;color:#17654f;font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase">$495 conversion credit</p><p style="margin:0;color:#204239"><strong>If your Council proceeds to its first annual CivicPath subscription within 30 days of the final Council Proof review, the full $495 paid Council Proof fee is applied as a credit against that annual subscription invoice.</strong></p></div><p style="margin:0 0 18px">A Council Proof is a focused 60-day engagement for one live portfolio. It is designed to help your Council test a practical workflow with real projects, constraints and a decision-ready review.</p><p style="margin:0;color:#63736c;font-size:13px">Submitting this enquiry does not create an invoice, payment obligation or subscription. The Proof scope, timing and payment are agreed with your Council before the engagement begins.</p><p style="margin:22px 0 0;color:#63736c;font-size:13px">CivicPath does not promise funding outcomes. The Proof is designed to give your Council a clearer view of the selected portfolio.</p></td></tr></table></td></tr></table></body></html>`;
+  const text = `Hi ${firstName},\n\nThank you for your interest in a CivicPath Council Proof. We have received your enquiry and will review the context you shared.\n\nYour $495 conversion credit\nA Council Proof is a focused 60-day engagement for one live portfolio. If your Council proceeds to its first annual CivicPath subscription within 30 days of the final Council Proof review, the full $495 paid Council Proof fee is applied as a credit against that annual subscription invoice.\n\nSubmitting this enquiry does not create an invoice, payment obligation or subscription. The Proof scope, timing and payment are agreed with your Council before the engagement begins.\n\nCivicPath does not promise funding outcomes. The Proof is designed to give your Council a clearer, decision-ready view of the selected portfolio.\n\nRegards,\nCivicPath`;
+  const html = brandedEmail({
+    heading: 'Your Council Proof enquiry is received',
+    preheader: 'Your Council Proof enquiry is received and ready for review.',
+    contentHtml: `<p style="margin:0 0 18px">Hi ${escapeEmailHtml(firstName)},</p><p style="margin:0 0 18px">Thank you for your interest in a CivicPath Council Proof. We will review the context you shared and come back with the most useful next practical step.</p>${emailCallout({ title: '$495 conversion credit', contentHtml: '<p style="margin:0"><strong>If your Council proceeds to its first annual CivicPath subscription within 30 days of the final Council Proof review, the full $495 paid Council Proof fee is applied as a credit against that annual subscription invoice.</strong></p>' })}<p style="margin:0 0 18px">A Council Proof is a focused 60-day engagement for one live portfolio. It is designed to help your Council test a practical workflow with real projects, constraints and a decision-ready review.</p><p style="margin:0;color:#5D6E6C;font-size:13px">Submitting this enquiry does not create an invoice, payment obligation or subscription. The Proof scope, timing and payment are agreed with your Council before the engagement begins.</p><p style="margin:22px 0 0;color:#5D6E6C;font-size:13px">CivicPath does not promise funding outcomes. The Proof is designed to give your Council a clearer view of the selected portfolio.</p>`,
+  });
   return { subject, text, html };
 }
 

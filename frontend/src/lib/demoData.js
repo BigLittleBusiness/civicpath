@@ -20,9 +20,9 @@ export const actions = [
 ];
 
 export const stageData = [
-  { stage: 'Concept', count: 1, colour: '#a7b5b0' }, { stage: 'Scoping', count: 1, colour: '#dfab7a' }, { stage: 'Business case', count: 1, colour: '#bb7650' }, { stage: 'Funding ready', count: 1, colour: '#178568' }, { stage: 'Delivery', count: 1, colour: '#234c55' },
+  { stage: 'Concept', count: 1, colour: '#B8CCC4' }, { stage: 'Scoping', count: 1, colour: '#CD7C4E' }, { stage: 'Business case', count: 1, colour: '#CD7C4E' }, { stage: 'Funding ready', count: 1, colour: '#0D6A55' }, { stage: 'Delivery', count: 1, colour: '#163133' },
 ];
-export const readinessData = [{ name: 'Ready', value: 2, color: '#178568' }, { name: 'In development', value: 2, color: '#dfab7a' }, { name: 'Early stage', value: 1, color: '#b9c5c1' }];
+export const readinessData = [{ name: 'Ready', value: 2, color: '#0D6A55' }, { name: 'In development', value: 2, color: '#CD7C4E' }, { name: 'Early stage', value: 1, color: '#B8CCC4' }];
 export const fundingVelocity = [{ month: 'Jul', value: 0.4, awarded: 0 }, { month: 'Aug', value: 0.7, awarded: 0.2 }, { month: 'Sep', value: 1.1, awarded: 0.4 }, { month: 'Oct', value: 1.9, awarded: 0.8 }, { month: 'Nov', value: 2.6, awarded: 1.2 }, { month: 'Dec', value: 3.5, awarded: 1.8 }];
 export const readinessProfile = [{ metric: 'Scope', score: 78 }, { metric: 'Cost', score: 65 }, { metric: 'Approvals', score: 54 }, { metric: 'Partners', score: 82 }, { metric: 'Funding', score: 61 }, { metric: 'Delivery', score: 73 }];
 export const benefitData = [{ name: 'Jobs', value: 85 }, { name: 'Funding sought', value: 8.15 }, { name: 'Funding secured', value: 4.2 }];

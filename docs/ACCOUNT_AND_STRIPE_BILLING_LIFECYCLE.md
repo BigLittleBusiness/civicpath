@@ -87,6 +87,10 @@ The raw request body is preserved only for signature verification. CivicPath sto
 8. Confirm password reset works and invalidates other sessions.
 9. Move to live mode only with a new approved change record and equivalent live test evidence.
 
+## Transactional email branding
+
+All HTML transactional messages use the shared Quartermark email shell: account registration, activation, password reset, refund confirmation, public enquiry notifications, Council Proof confirmation, and Portfolio Readiness Pulse messages. The shell is table-based for broad email-client support, retains a plain-text alternative, and loads the approved logo via the public absolute URL derived from `FRONTEND_URL` (`https://app.civicpath.com.au/civicpath-quartermark.png` in production). Confirm that URL resolves over HTTPS before enabling SES delivery.
+
 ## Deliberate boundaries
 
 - Stripe Dashboard remains available for financial reconciliation, tax settings, tax registrations, disputes and full payment-provider reporting.
