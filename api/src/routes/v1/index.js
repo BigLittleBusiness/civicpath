@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authRouter } from './auth.js';
-import { requireAuth, tenantScope, requireRoles } from '../../middleware/auth.js';
+import { requireActiveEntitlement, requireAuth, tenantScope, requireRoles } from '../../middleware/auth.js';
 import { overview } from '../../controllers/dashboardController.js';
 import { listProjects, createProject, updateProject } from '../../controllers/projectController.js';
 import { listGrants, createGrant } from '../../controllers/grantController.js';
@@ -11,6 +11,8 @@ import { previewImport, commitImport } from '../../controllers/importController.
 import { adminRouter } from './admin.js';
 import { submitPortfolioReadinessPulse } from '../../controllers/publicPulseController.js';
 import { getPublicContactChallenge, submitPublicContactEnquiry } from '../../controllers/publicContactController.js';
+import { publicPlans } from '../../controllers/accountLifecycleController.js';
+import { createCustomerPortal, startCouncilProofConversionCheckout } from '../../controllers/stripeBillingController.js';
 import { getSupportContactChallenge } from '../../controllers/supportContactController.js';
 import { submitSupportContactWithAttachments, uploadSupportAttachments } from '../../controllers/supportAttachmentController.js';
 import {
@@ -50,10 +52,14 @@ v1Router.use('/auth', authRouter);
 v1Router.get('/public/contact-challenge', getPublicContactChallenge);
 v1Router.post('/public/contact-enquiries', submitPublicContactEnquiry);
 v1Router.post('/public/portfolio-readiness-pulse', submitPortfolioReadinessPulse);
+v1Router.get('/public/plans', publicPlans);
 v1Router.use('/admin', requireAuth, tenantScope, adminRouter);
 v1Router.use(requireAuth, tenantScope);
 v1Router.get('/support/contact-challenge', getSupportContactChallenge);
 v1Router.post('/support/contact-enquiries', uploadSupportAttachments, submitSupportContactWithAttachments);
+v1Router.post('/billing/customer-portal', requireRoles('org_admin'), createCustomerPortal);
+v1Router.post('/billing/council-proof-conversion-checkout', requireRoles('org_admin'), startCouncilProofConversionCheckout);
+v1Router.use(requireActiveEntitlement);
 v1Router.get('/dashboard/overview', overview);
 v1Router.get('/council-proof/selectors', listCouncilProofSelectors);
 v1Router.get('/priorities', listPriorities);

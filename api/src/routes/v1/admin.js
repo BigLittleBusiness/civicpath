@@ -5,6 +5,7 @@ import { customer360, changeTenantState, addCustomerContact, addCustomerNote } f
 import { getPulseRouting, listPulseLeads, savePulseRouting } from '../../controllers/pulseAdminController.js';
 import { listPublicEnquiries, updatePublicEnquiryFollowUp } from '../../controllers/publicEnquiryAdminController.js';
 import { downloadSupportAttachment } from '../../controllers/supportAttachmentController.js';
+import { cancelCustomerPlan, changeCustomerPlan, customerBillingSummary, refundCustomerInvoice } from '../../controllers/stripeBillingController.js';
 
 export const adminRouter = Router();
 adminRouter.use(requireRoles('platform_admin'));
@@ -20,6 +21,10 @@ adminRouter.get('/support-cases/:caseId/attachments/:attachmentId/download', dow
 adminRouter.get('/public-enquiries', listPublicEnquiries);
 adminRouter.patch('/public-enquiries/:enquiryId/follow-up', updatePublicEnquiryFollowUp);
 adminRouter.get('/plans', listPlans);
+adminRouter.get('/customers/:customerId/billing', customerBillingSummary);
+adminRouter.post('/customers/:customerId/billing/change-plan', requireStepUp, changeCustomerPlan);
+adminRouter.post('/customers/:customerId/billing/cancel', requireStepUp, cancelCustomerPlan);
+adminRouter.post('/customers/:customerId/billing/refunds', requireStepUp, refundCustomerInvoice);
 adminRouter.get('/billing/stripe', getStripeSettings);
 adminRouter.put('/billing/stripe', requireStepUp, saveStripeSettings);
 adminRouter.get('/lead-routing', getPulseRouting);

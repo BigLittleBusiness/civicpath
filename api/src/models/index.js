@@ -31,6 +31,7 @@ export const User = sequelize.define('User', {
   mfaRecoveryCodes: { type: DataTypes.JSON, allowNull: true },
   mfaEnrolledAt: { type: DataTypes.DATE, allowNull: true },
   mfaLastVerifiedAt: { type: DataTypes.DATE, allowNull: true },
+  sessionVersion: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
 }, { ...standard, indexes: [{ unique: true, fields: ['organization_id', 'email'] }] });
 
 export const ProductPlan = sequelize.define('ProductPlan', {
@@ -50,13 +51,82 @@ export const Subscription = sequelize.define('Subscription', {
   id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
   organizationId: { type: DataTypes.UUID, allowNull: false },
   planId: { type: DataTypes.UUID, allowNull: false },
-  status: { type: DataTypes.ENUM('trial', 'active', 'past_due', 'cancelled', 'expired'), allowNull: false, defaultValue: 'trial' },
+  status: { type: DataTypes.ENUM('pending_checkout', 'trial', 'active', 'past_due', 'cancelled', 'expired'), allowNull: false, defaultValue: 'pending_checkout' },
   startsAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   endsAt: { type: DataTypes.DATE, allowNull: true },
   billingProvider: { type: DataTypes.STRING(40), allowNull: true },
   billingReference: { type: DataTypes.STRING(180), allowNull: true },
   entitlements: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
 }, standard);
+
+// Stripe remains the billing source of truth; these records retain CivicPath's secure, searchable operational mirror.
+export const BillingProfile = sequelize.define('BillingProfile', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false, unique: true },
+  legalName: { type: DataTypes.STRING(180), allowNull: true },
+  abnNzbn: { type: DataTypes.STRING(40), allowNull: true },
+  billingEmail: { type: DataTypes.STRING(191), allowNull: false, validate: { isEmail: true } },
+  contactPhone: { type: DataTypes.STRING(50), allowNull: true },
+  stripeCustomerId: { type: DataTypes.STRING(191), allowNull: true, unique: true },
+  taxIdCollected: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  billingAddress: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+}, standard);
+
+export const BillingInvoice = sequelize.define('BillingInvoice', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  subscriptionId: { type: DataTypes.UUID, allowNull: true },
+  stripeInvoiceId: { type: DataTypes.STRING(191), allowNull: false, unique: true },
+  stripeCustomerId: { type: DataTypes.STRING(191), allowNull: true },
+  stripePaymentIntentId: { type: DataTypes.STRING(191), allowNull: true },
+  invoiceNumber: { type: DataTypes.STRING(120), allowNull: true },
+  status: { type: DataTypes.STRING(60), allowNull: false },
+  currency: { type: DataTypes.CHAR(3), allowNull: false, defaultValue: 'AUD' },
+  amountDue: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+  amountPaid: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+  amountRemaining: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+  hostedInvoiceUrl: { type: DataTypes.STRING(1000), allowNull: true },
+  invoicePdfUrl: { type: DataTypes.STRING(1000), allowNull: true },
+  dueAt: { type: DataTypes.DATE, allowNull: true },
+  paidAt: { type: DataTypes.DATE, allowNull: true },
+}, { ...standard, indexes: [{ name: 'bi_org_created', fields: ['organization_id', 'created_at'] }, { name: 'bi_status_due', fields: ['status', 'due_at'] }] });
+
+export const BillingRefund = sequelize.define('BillingRefund', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  invoiceId: { type: DataTypes.UUID, allowNull: true },
+  requestedBy: { type: DataTypes.UUID, allowNull: true },
+  stripeRefundId: { type: DataTypes.STRING(191), allowNull: false, unique: true },
+  stripePaymentIntentId: { type: DataTypes.STRING(191), allowNull: true },
+  amount: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+  currency: { type: DataTypes.CHAR(3), allowNull: false, defaultValue: 'AUD' },
+  status: { type: DataTypes.STRING(60), allowNull: false },
+  reason: { type: DataTypes.STRING(100), allowNull: true },
+  adminNote: { type: DataTypes.TEXT, allowNull: true },
+  providerReference: { type: DataTypes.STRING(255), allowNull: true },
+}, { ...standard, indexes: [{ name: 'br_org_created', fields: ['organization_id', 'created_at'] }, { name: 'br_status_created', fields: ['status', 'created_at'] }] });
+
+export const BillingEvent = sequelize.define('BillingEvent', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: true },
+  stripeEventId: { type: DataTypes.STRING(191), allowNull: false, unique: true },
+  eventType: { type: DataTypes.STRING(120), allowNull: false },
+  stripeCustomerId: { type: DataTypes.STRING(191), allowNull: true },
+  stripeSubscriptionId: { type: DataTypes.STRING(191), allowNull: true },
+  processingStatus: { type: DataTypes.ENUM('received', 'processed', 'ignored', 'failed'), allowNull: false, defaultValue: 'received' },
+  payload: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+  processedAt: { type: DataTypes.DATE, allowNull: true },
+  error: { type: DataTypes.STRING(1000), allowNull: true },
+}, { ...standard, indexes: [{ name: 'be_org_created', fields: ['organization_id', 'created_at'] }, { name: 'be_type_status', fields: ['event_type', 'processing_status'] }] });
+
+export const PasswordResetToken = sequelize.define('PasswordResetToken', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  tokenHash: { type: DataTypes.STRING(64), allowNull: false, unique: true },
+  expiresAt: { type: DataTypes.DATE, allowNull: false },
+  consumedAt: { type: DataTypes.DATE, allowNull: true },
+  requestedIpHash: { type: DataTypes.STRING(128), allowNull: true },
+}, { timestamps: true, updatedAt: false, underscored: true, paranoid: false, indexes: [{ name: 'prt_user_expiry', fields: ['user_id', 'expires_at', 'consumed_at'] }] });
 
 export const IntegrationConnection = sequelize.define('IntegrationConnection', {
   id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
@@ -721,6 +791,20 @@ User.belongsTo(Organization, { foreignKey: 'organizationId' });
 Organization.hasMany(Subscription, { foreignKey: 'organizationId' });
 Subscription.belongsTo(Organization, { foreignKey: 'organizationId' });
 Subscription.belongsTo(ProductPlan, { foreignKey: 'planId' });
+Organization.hasOne(BillingProfile, { foreignKey: 'organizationId' });
+BillingProfile.belongsTo(Organization, { foreignKey: 'organizationId' });
+Organization.hasMany(BillingInvoice, { foreignKey: 'organizationId' });
+BillingInvoice.belongsTo(Organization, { foreignKey: 'organizationId' });
+Subscription.hasMany(BillingInvoice, { foreignKey: 'subscriptionId' });
+BillingInvoice.belongsTo(Subscription, { foreignKey: 'subscriptionId' });
+Organization.hasMany(BillingRefund, { foreignKey: 'organizationId' });
+BillingRefund.belongsTo(Organization, { foreignKey: 'organizationId' });
+BillingRefund.belongsTo(BillingInvoice, { foreignKey: 'invoiceId' });
+BillingRefund.belongsTo(User, { as: 'refundRequestedBy', foreignKey: 'requestedBy' });
+Organization.hasMany(BillingEvent, { foreignKey: 'organizationId' });
+BillingEvent.belongsTo(Organization, { foreignKey: 'organizationId' });
+User.hasMany(PasswordResetToken, { foreignKey: 'userId' });
+PasswordResetToken.belongsTo(User, { foreignKey: 'userId' });
 Organization.hasMany(IntegrationConnection, { foreignKey: 'organizationId' });
 IntegrationConnection.belongsTo(Organization, { foreignKey: 'organizationId' });
 Organization.hasMany(SupportCase, { foreignKey: 'organizationId' });
@@ -855,4 +939,4 @@ PulseLeadResult.belongsTo(PublicLead, { foreignKey: 'leadId' });
 PublicLead.hasMany(PulseLeadNotification, { foreignKey: 'leadId' });
 PulseLeadNotification.belongsTo(PublicLead, { foreignKey: 'leadId' });
 PublicContactEnquiry.belongsTo(User, { as: 'followUpOwner', foreignKey: 'followUpOwnerId' });
-export const models = { Organization, User, ProductPlan, Subscription, IntegrationConnection, PlatformSetting, SupportCase, SupportAttachment, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, StrategicPlan, StrategyFocusArea, StrategyStatusDefinition, StrategyAction, StrategyActionProject, ActionMilestone, ActionDependency, QuarterlyReportingPeriod, QuarterlyActionUpdate, StrategyMeasure, StrategyDecision, StrategyStakeholder, StrategyRiskIssue, ActionFundingPosition, ActionEvidenceLink, StrategyReportSnapshot, StrategyAlert, AuditLog, PublicLead, PulseLeadSession, PulseLeadConsent, PulseLeadResult, PulseLeadNotification, PublicFormChallenge, PublicContactEnquiry };
+export const models = { Organization, User, ProductPlan, Subscription, BillingProfile, BillingInvoice, BillingRefund, BillingEvent, PasswordResetToken, IntegrationConnection, PlatformSetting, SupportCase, SupportAttachment, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, StrategicPlan, StrategyFocusArea, StrategyStatusDefinition, StrategyAction, StrategyActionProject, ActionMilestone, ActionDependency, QuarterlyReportingPeriod, QuarterlyActionUpdate, StrategyMeasure, StrategyDecision, StrategyStakeholder, StrategyRiskIssue, ActionFundingPosition, ActionEvidenceLink, StrategyReportSnapshot, StrategyAlert, AuditLog, PublicLead, PulseLeadSession, PulseLeadConsent, PulseLeadResult, PulseLeadNotification, PublicFormChallenge, PublicContactEnquiry };

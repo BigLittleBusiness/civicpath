@@ -9,9 +9,12 @@ const stripeSchema = Joi.object({
   publishableKey: Joi.string().trim().allow('', null),
   secretKey: Joi.string().trim().allow('', null),
   webhookSecret: Joi.string().trim().allow('', null),
+  proofPriceId: Joi.string().trim().allow('', null),
   corePriceId: Joi.string().trim().allow('', null),
   essentialsPriceId: Joi.string().trim().allow('', null),
   grantmaestroPriceId: Joi.string().trim().allow('', null),
+  customerPortalConfigurationId: Joi.string().trim().allow('', null),
+  automaticTaxEnabled: Joi.boolean().default(false),
 });
 
 function mask(value) { return value ? `${value.slice(0, 7)}••••${value.slice(-4)}` : ''; }
@@ -46,7 +49,7 @@ export async function listSupportCases(req, res, next) { try { const records = a
 export async function updateSupportCase(req, res, next) { try { const schema = Joi.object({ status: Joi.string().valid('new', 'in_progress', 'waiting_customer', 'resolved', 'closed'), priority: Joi.string().valid('low', 'normal', 'high', 'urgent') }); const { value, error } = schema.validate(req.body, { stripUnknown: true }); if (error) return res.status(422).json({ error: error.message }); const record = await SupportCase.findByPk(req.params.caseId); if (!record) return res.status(404).json({ error: 'Support case not found.' }); await record.update({ ...value, resolvedAt: ['resolved', 'closed'].includes(value.status) ? new Date() : record.resolvedAt, ownerId: req.auth.sub }); await platformAudit(req, 'support_case_updated', { caseId: record.id, status: record.status }); return res.json({ data: record }); } catch (error) { return next(error); } }
 
 export async function getStripeSettings(req, res, next) {
-  try { const setting = await PlatformSetting.findOne({ where: { settingKey: 'stripe_billing' } }); const publicConfig = setting?.configuration || {}; const secretConfig = setting?.encryptedPayload ? decryptConfiguration(setting.encryptedPayload) : {}; return res.json({ data: { mode: publicConfig.mode || 'test', publishableKey: mask(publicConfig.publishableKey), corePriceId: publicConfig.corePriceId || '', essentialsPriceId: publicConfig.essentialsPriceId || '', grantmaestroPriceId: publicConfig.grantmaestroPriceId || '', configured: Boolean(publicConfig.configured), secretKeyConfigured: Boolean(secretConfig.secretKey), webhookSecretConfigured: Boolean(secretConfig.webhookSecret) } }); } catch (error) { return next(error); }
+  try { const setting = await PlatformSetting.findOne({ where: { settingKey: 'stripe_billing' } }); const publicConfig = setting?.configuration || {}; const secretConfig = setting?.encryptedPayload ? decryptConfiguration(setting.encryptedPayload) : {}; return res.json({ data: { mode: publicConfig.mode || 'test', publishableKey: mask(publicConfig.publishableKey), proofPriceId: publicConfig.proofPriceId || '', corePriceId: publicConfig.corePriceId || '', essentialsPriceId: publicConfig.essentialsPriceId || '', grantmaestroPriceId: publicConfig.grantmaestroPriceId || '', customerPortalConfigurationId: publicConfig.customerPortalConfigurationId || '', automaticTaxEnabled: Boolean(publicConfig.automaticTaxEnabled), configured: Boolean(publicConfig.configured), secretKeyConfigured: Boolean(secretConfig.secretKey), webhookSecretConfigured: Boolean(secretConfig.webhookSecret) } }); } catch (error) { return next(error); }
 }
 
 export async function saveStripeSettings(req, res, next) {
@@ -55,11 +58,13 @@ export async function saveStripeSettings(req, res, next) {
     if ((value.secretKey || value.webhookSecret) && !env.platformEncryptionKey) return res.status(422).json({ error: 'A platform encryption key must be configured before Stripe secrets can be saved.' });
     const setting = await PlatformSetting.findOne({ where: { settingKey: 'stripe_billing' } }); const existingSecrets = setting?.encryptedPayload ? decryptConfiguration(setting.encryptedPayload) : {};
     const secretKey = value.secretKey || existingSecrets.secretKey || ''; const webhookSecret = value.webhookSecret || existingSecrets.webhookSecret || '';
-    const configuration = { mode: value.mode, publishableKey: value.publishableKey || setting?.configuration?.publishableKey || '', corePriceId: value.corePriceId, essentialsPriceId: value.essentialsPriceId, grantmaestroPriceId: value.grantmaestroPriceId, configured: Boolean(value.publishableKey && secretKey && webhookSecret) };
+    const existingPublishableKey = setting?.configuration?.publishableKey || '';
+    const publishableKey = value.publishableKey?.includes('••••') ? existingPublishableKey : value.publishableKey || existingPublishableKey;
+    const configuration = { mode: value.mode, publishableKey, proofPriceId: value.proofPriceId, corePriceId: value.corePriceId, essentialsPriceId: value.essentialsPriceId, grantmaestroPriceId: value.grantmaestroPriceId, customerPortalConfigurationId: value.customerPortalConfigurationId, automaticTaxEnabled: value.automaticTaxEnabled, configured: Boolean(publishableKey && secretKey && webhookSecret) };
     const encryptedPayload = (secretKey || webhookSecret) ? encryptConfiguration({ secretKey, webhookSecret }) : null;
     const [record] = await PlatformSetting.upsert({ id: setting?.id, settingKey: 'stripe_billing', configuration, encryptedPayload, updatedBy: req.auth.sub });
     await platformAudit(req, 'stripe_settings_saved', { mode: configuration.mode, configured: configuration.configured });
-    return res.json({ data: { mode: configuration.mode, publishableKey: mask(configuration.publishableKey), corePriceId: configuration.corePriceId, essentialsPriceId: configuration.essentialsPriceId, grantmaestroPriceId: configuration.grantmaestroPriceId, configured: configuration.configured, secretKeyConfigured: Boolean(secretKey), webhookSecretConfigured: Boolean(webhookSecret) } });
+    return res.json({ data: { mode: configuration.mode, publishableKey: mask(configuration.publishableKey), proofPriceId: configuration.proofPriceId, corePriceId: configuration.corePriceId, essentialsPriceId: configuration.essentialsPriceId, grantmaestroPriceId: configuration.grantmaestroPriceId, customerPortalConfigurationId: configuration.customerPortalConfigurationId, automaticTaxEnabled: configuration.automaticTaxEnabled, configured: configuration.configured, secretKeyConfigured: Boolean(secretKey), webhookSecretConfigured: Boolean(webhookSecret) } });
   } catch (error) { return next(error); }
 }
 

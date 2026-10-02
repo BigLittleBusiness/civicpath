@@ -11,7 +11,8 @@ for required in \
   api/.env.binarylane.example \
   api/db/migrations/006_public_contact_and_altcha.mjs \
   api/db/migrations/008_council_proof_confirmation_delivery.mjs \
-  api/db/migrations/009_strategy_delivery_workspace.mjs; do
+  api/db/migrations/009_strategy_delivery_workspace.mjs \
+  api/db/migrations/010_stripe_account_billing_lifecycle.mjs; do
   [ -f "$required" ] || { printf 'Missing Binary Lane deployment file: %s\n' "$required" >&2; exit 1; }
 done
 

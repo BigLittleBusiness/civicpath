@@ -7,6 +7,7 @@ import { env } from './config/env.js';
 import { sequelize } from './config/database.js';
 import './models/index.js';
 import { v1Router } from './routes/v1/index.js';
+import { stripeWebhook } from './controllers/stripeBillingController.js';
 import { errorHandler, notFound } from './middleware/errors.js';
 import { registerScheduledJobs } from './scheduledJobs.js';
 
@@ -14,9 +15,13 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors({ origin(origin, callback) { if (!origin || env.corsOrigins.includes(origin)) return callback(null, true); return callback(new Error('Origin is not allowed by CivicPath CORS policy.')); }, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }));
+// Stripe signature verification requires the unparsed request body and must run before express.json().
+app.post('/v1/billing/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }), stripeWebhook);
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use('/v1/auth/login', rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many sign-in attempts. Please try again later.' } }));
+app.use('/v1/auth/register', rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many registration attempts. Please wait and try again.' } }));
+app.use('/v1/auth/password-reset', rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many password-reset requests. Please wait and try again.' } }));
 app.use('/v1/auth/mfa', rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many authenticator attempts. Please try again later.' } }));
 app.use('/v1/public/contact-challenge', rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many verification requests from this network. Please wait and try again.' } }));
 app.use('/v1/public/contact-enquiries', rateLimit({ windowMs: 60 * 60 * 1000, limit: 12, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many contact submissions from this network. Please try again later.' } }));

@@ -5,7 +5,7 @@ import { deriveKey } from 'altcha-lib/algorithms/pbkdf2';
 import { PublicFormChallenge } from '../models/index.js';
 import { env } from '../config/env.js';
 
-export const altchaPurposes = Object.freeze(['sales_enquiry', 'council_proof_enquiry', 'general_enquiry', 'portfolio_readiness_pulse', 'support_enquiry']);
+export const altchaPurposes = Object.freeze(['sales_enquiry', 'council_proof_enquiry', 'general_enquiry', 'portfolio_readiness_pulse', 'support_enquiry', 'account_registration', 'password_reset']);
 const CHALLENGE_LIFETIME_MS = 5 * 60 * 1000;
 const MAX_PAYLOAD_LENGTH = 16_000;
 

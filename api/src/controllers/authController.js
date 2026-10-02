@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import Joi from 'joi';
 import bcrypt from 'bcryptjs';
-import { User, AuditLog } from '../models/index.js';
+import { User, AuditLog, ProductPlan, Subscription } from '../models/index.js';
 import { env } from '../config/env.js';
 import { decryptConfiguration, encryptConfiguration } from '../services/encryption.js';
 import { createTotpSecret, buildOtpauthUrl, createQrCode, verifyTotp, createRecoveryCodes, hashRecoveryCodes, consumeRecoveryCode } from '../services/mfa.js';
@@ -14,9 +14,16 @@ function sessionUser(user) {
   return { id: user.id, organizationId: user.organizationId, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role, mfaEnabled: Boolean(user.mfaEnabled), mfaRequired: Boolean(user.mfaRequired) };
 }
 
+async function accessState(user) {
+  if (user.role === 'platform_admin') return { accessActive: true, subscriptionStatus: 'platform' };
+  const subscription = await Subscription.findOne({ where: { organizationId: user.organizationId, status: 'active' }, include: [{ model: ProductPlan }], order: [['createdAt', 'DESC']] }) || await Subscription.findOne({ where: { organizationId: user.organizationId }, include: [{ model: ProductPlan }], order: [['createdAt', 'DESC']] });
+  const accessActive = subscription?.status === 'active' && (!subscription.endsAt || new Date(subscription.endsAt) > new Date());
+  return { accessActive, subscriptionStatus: subscription?.status || 'not_started', subscriptionPlanCode: subscription?.ProductPlan?.code || null, subscriptionEndsAt: subscription?.endsAt || null };
+}
+
 function cookieOptions() { return { httpOnly: true, secure: env.isProduction, sameSite: env.isProduction ? 'none' : 'lax', domain: env.cookieDomain, maxAge: 8 * 60 * 60 * 1000 }; }
 function issueSession(res, user, elevatedAt = null) {
-  const token = jwt.sign({ sub: user.id, organizationId: user.organizationId, role: user.role, elevatedAt }, env.jwtSecret, { expiresIn: env.jwtExpiresIn });
+  const token = jwt.sign({ sub: user.id, organizationId: user.organizationId, role: user.role, sessionVersion: user.sessionVersion || 0, elevatedAt }, env.jwtSecret, { expiresIn: env.jwtExpiresIn });
   res.cookie('civicpath_session', token, cookieOptions());
   res.clearCookie('civicpath_mfa_pending', cookieOptions());
 }
@@ -49,10 +56,12 @@ export async function login(req, res, next) {
       issueMfaPending(res, user, 'login');
       return res.json({ data: { mfaRequired: true, setupRequired: false } });
     }
+    const access = await accessState(user);
+    if (!access.accessActive) return res.status(402).json({ error: 'This CivicPath workspace is not currently active. Complete checkout or ask your organisation administrator to review billing.', code: 'subscription_access_required', subscriptionStatus: access.subscriptionStatus });
     await user.update({ lastLoginAt: new Date() });
     await audit(user, 'auth_login_success', req);
     issueSession(res, user);
-    return res.json({ data: { user: sessionUser(user) } });
+    return res.json({ data: { user: sessionUser(user), ...access } });
   } catch (error) { return next(error); }
 }
 
@@ -87,7 +96,7 @@ export async function confirmMfaSetup(req, res, next) {
     await user.update({ mfaRequired: true, mfaEnabled: true, mfaRecoveryCodes: await hashRecoveryCodes(recoveryCodes), mfaEnrolledAt: new Date(), mfaLastVerifiedAt: new Date(), lastLoginAt: new Date() });
     await audit(user, 'mfa_enrolled', req);
     issueSession(res, user);
-    return res.json({ data: { user: sessionUser(user), recoveryCodes } });
+    return res.json({ data: { user: sessionUser(user), ...(await accessState(user)), recoveryCodes } });
   } catch (error) { return next(error); }
 }
 
@@ -103,7 +112,7 @@ export async function verifyMfaLogin(req, res, next) {
     await user.update({ mfaLastVerifiedAt: new Date(), lastLoginAt: new Date() });
     await audit(user, 'auth_mfa_success', req);
     issueSession(res, user);
-    return res.json({ data: { user: sessionUser(user) } });
+    return res.json({ data: { user: sessionUser(user), ...(await accessState(user)) } });
   } catch (error) { return next(error); }
 }
 
@@ -133,6 +142,6 @@ export async function me(req, res, next) {
   try {
     const user = await User.findByPk(req.auth.sub);
     if (!user || user.status !== 'active') return res.status(401).json({ error: 'Your account is unavailable.' });
-    return res.json({ data: { user: sessionUser(user) } });
+    return res.json({ data: { user: sessionUser(user), ...(await accessState(user)) } });
   } catch (error) { return next(error); }
 }
