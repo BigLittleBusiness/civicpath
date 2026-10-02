@@ -3,7 +3,7 @@ import { Op } from 'sequelize';
 import { sequelize } from '../config/database.js';
 import { AuditLog, BillingEvent, BillingInvoice, BillingProfile, BillingRefund, Organization, ProductPlan, Subscription, User } from '../models/index.js';
 import { accountActivatedMessage, refundRequestedMessage, sendTransactionalEmail } from '../services/accountNotifications.js';
-import { BillingConfigurationError, getStripeBillingSettings, getStripeClient, planForStripePrice, priceIdForPlan, stripeCustomerId, stripeStatusToCivicPath, stripeSubscriptionId } from '../services/stripeBilling.js';
+import { BillingConfigurationError, checkoutTaxParameters, getStripeBillingSettings, getStripeClient, invoicePaymentIntentId, planForStripePrice, priceIdForPlan, stripeCustomerId, stripeStatusToCivicPath, stripeSubscriptionId, subscriptionPeriodEnd } from '../services/stripeBilling.js';
 import { env } from '../config/env.js';
 
 const changePlanSchema = Joi.object({ planCode: Joi.string().valid('council-proof', 'essentials', 'civicpath-core').required() });
@@ -48,7 +48,7 @@ async function upsertInvoice(invoice, organizationId, subscriptionId = null) {
     subscriptionId,
     stripeInvoiceId: invoice.id,
     stripeCustomerId: stripeCustomerId(invoice.customer),
-    stripePaymentIntentId: stripeSubscriptionId(invoice.payment_intent),
+    stripePaymentIntentId: invoicePaymentIntentId(invoice),
     invoiceNumber: invoice.number || null,
     status: invoice.status || 'unknown',
     currency: String(invoice.currency || 'aud').toUpperCase(),
@@ -68,7 +68,7 @@ async function upsertInvoice(invoice, organizationId, subscriptionId = null) {
 async function activateVerifiedPurchase({ organization, subscription, plan, stripeSubscription, eventId }) {
   if (!organization || !subscription) return null;
   const wasInactive = subscription.status !== 'active';
-  const endAt = stripeSubscription?.current_period_end ? new Date(stripeSubscription.current_period_end * 1000) : plan?.code === 'council-proof' ? new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) : subscription.endsAt;
+  const endAt = subscriptionPeriodEnd(stripeSubscription) || (plan?.code === 'council-proof' ? new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) : subscription.endsAt);
   await subscription.update({ planId: plan?.id || subscription.planId, status: 'active', billingProvider: 'stripe', billingReference: stripeSubscription?.id || subscription.billingReference, startsAt: subscription.startsAt || new Date(), endsAt: endAt, entitlements: { ...(subscription.entitlements || {}), stripeStatus: stripeSubscription?.status || 'paid', lastVerifiedEventId: eventId, verifiedAt: new Date().toISOString() } });
   await organization.update({ status: 'active', planCode: plan?.code || organization.planCode });
   const invitedUsers = await User.findAll({ where: { organizationId: organization.id, status: 'invited' } });
@@ -94,6 +94,17 @@ async function resolvePlanForSubscription(stripeSubscription) {
   return planForStripePrice(priceId);
 }
 
+// Records the event once. Stripe may deliver the same event concurrently (retries, or several listeners), so the
+// unique stripe_event_id decides which delivery processes it; a later delivery may only retry a failed attempt.
+async function claimBillingEvent(values) {
+  try { return await BillingEvent.create(values); }
+  catch (error) {
+    if (error.name !== 'SequelizeUniqueConstraintError') throw error;
+    const [claimed] = await BillingEvent.update({ processingStatus: 'received', error: null }, { where: { stripeEventId: values.stripeEventId, processingStatus: 'failed' } });
+    return claimed ? BillingEvent.findOne({ where: { stripeEventId: values.stripeEventId } }) : null;
+  }
+}
+
 async function processStripeEvent(event) {
   const type = event.type;
   const object = event.data?.object || {};
@@ -101,7 +112,8 @@ async function processStripeEvent(event) {
   const customerId = stripeCustomerId(object.customer);
   const stripeSubId = stripeSubscriptionId(object.subscription) || stripeSubscriptionId(object.parent?.subscription_details?.subscription) || (type.startsWith('customer.subscription.') ? object.id : null);
   const organization = await organisationForStripe({ customerId, metadata });
-  const billingEvent = await BillingEvent.create({ organizationId: organization?.id || null, stripeEventId: event.id, eventType: type, stripeCustomerId: customerId, stripeSubscriptionId: stripeSubId, payload: { apiVersion: event.api_version, created: event.created, objectId: object.id, livemode: event.livemode } });
+  const billingEvent = await claimBillingEvent({ organizationId: organization?.id || null, stripeEventId: event.id, eventType: type, stripeCustomerId: customerId, stripeSubscriptionId: stripeSubId, payload: { apiVersion: event.api_version, created: event.created, objectId: object.id, livemode: event.livemode } });
+  if (!billingEvent) return { state: 'duplicate' };
   try {
     if (!organization) {
       await billingEvent.update({ processingStatus: 'ignored', processedAt: new Date(), error: 'No CivicPath organization matched this Stripe event.' });
@@ -117,10 +129,14 @@ async function processStripeEvent(event) {
         await activateVerifiedPurchase({ organization, subscription, plan, stripeSubscription: null, eventId: event.id });
       }
     } else if (type === 'invoice.paid') {
-      const plan = await resolvePlanForSubscription(object) || (subscription ? await ProductPlan.findByPk(subscription.planId) : null);
+      // Re-read from Stripe at the SDK's API version: the event payload omits invoice.payments (needed for refunds)
+      // and may be rendered at a different API version than this code expects.
+      const { stripe } = await getStripeClient();
+      const paidInvoice = await stripe.invoices.retrieve(object.id, { expand: ['payments'] });
+      const stripeSubscription = stripeSubId ? await stripe.subscriptions.retrieve(stripeSubId) : null;
+      const plan = await resolvePlanForSubscription(stripeSubscription) || (subscription ? await ProductPlan.findByPk(subscription.planId) : null);
       const activeSubscription = subscription || await localSubscriptionForStripe({ organizationId: organization.id });
-      const invoice = await upsertInvoice(object, organization.id, activeSubscription?.id || null);
-      const stripeSubscription = stripeSubId ? await getStripeClient().then(({ stripe }) => stripe.subscriptions.retrieve(stripeSubId)) : null;
+      const invoice = await upsertInvoice(paidInvoice, organization.id, activeSubscription?.id || null);
       if (activeSubscription) await activateVerifiedPurchase({ organization, subscription: activeSubscription, plan, stripeSubscription, eventId: event.id });
       await AuditLog.create({ organizationId: organization.id, userId: null, entityType: 'billing_invoice', entityId: invoice?.id || null, action: 'stripe_invoice_paid', metadata: { stripeEventId: event.id, stripeInvoiceId: object.id, amountPaid: object.amount_paid, currency: object.currency } });
     } else if (type === 'invoice.payment_failed') {
@@ -131,7 +147,7 @@ async function processStripeEvent(event) {
       const plan = await resolvePlanForSubscription(object);
       if (subscription) {
         const status = stripeStatusToCivicPath(object.status);
-        await subscription.update({ planId: plan?.id || subscription.planId, status, billingReference: object.id, endsAt: object.current_period_end ? new Date(object.current_period_end * 1000) : subscription.endsAt, entitlements: { ...(subscription.entitlements || {}), stripeStatus: object.status, cancelAtPeriodEnd: Boolean(object.cancel_at_period_end), currentPeriodEnd: object.current_period_end || null } });
+        await subscription.update({ planId: plan?.id || subscription.planId, status, billingReference: object.id, endsAt: subscriptionPeriodEnd(object) || subscription.endsAt, entitlements: { ...(subscription.entitlements || {}), stripeStatus: object.status, cancelAtPeriodEnd: Boolean(object.cancel_at_period_end), currentPeriodEnd: subscriptionPeriodEnd(object)?.toISOString() || null } });
         if (plan) await organization.update({ planCode: plan.code });
         if (status === 'active') await organization.update({ status: 'active' });
       }
@@ -161,10 +177,8 @@ export async function stripeWebhook(req, res, next) {
     let event;
     try { event = stripe.webhooks.constructEvent(req.body, req.get('stripe-signature'), settings.webhookSecret); }
     catch { return res.status(400).json({ error: 'Stripe webhook signature could not be verified.' }); }
-    const prior = await BillingEvent.findOne({ where: { stripeEventId: event.id } });
-    if (prior) return res.status(200).json({ data: { received: true, duplicate: true } });
-    await processStripeEvent(event);
-    return res.status(200).json({ data: { received: true } });
+    const result = await processStripeEvent(event);
+    return res.status(200).json({ data: { received: true, duplicate: result.state === 'duplicate' } });
   } catch (error) { return next(error); }
 }
 
@@ -194,9 +208,10 @@ export async function startCouncilProofConversionCheckout(req, res, next) {
     if (!targetPlan) return res.status(422).json({ error: 'The CivicPath annual plan is not currently available.' });
     const { stripe, settings } = await getStripeClient();
     const targetPriceId = priceIdForPlan(targetPlan, settings);
-    const coupon = await stripe.coupons.create({ amount_off: 49500, currency: 'aud', duration: 'once', name: 'CivicPath Council Proof conversion credit', metadata: { civicpathOrganizationId: organization.id, proofSubscriptionId: proofSubscription.id, conversionDeadline: conversionDeadline.toISOString() } });
+    const taxParameters = checkoutTaxParameters({ settings, priceId: targetPriceId }); // Validated before the coupon is created.
+    const coupon = await stripe.coupons.create({ amount_off: 49500, currency: 'aud', duration: 'once', name: 'Council Proof conversion credit', metadata: { civicpathOrganizationId: organization.id, proofSubscriptionId: proofSubscription.id, conversionDeadline: conversionDeadline.toISOString() } });
     const nextSubscription = await Subscription.create({ organizationId: organization.id, planId: targetPlan.id, status: 'pending_checkout', startsAt: new Date(), billingProvider: 'stripe', entitlements: { pendingReason: 'Council Proof conversion checkout', conversionCreditAud: 495, proofSubscriptionId: proofSubscription.id } });
-    const session = await stripe.checkout.sessions.create({ mode: 'subscription', customer: profile.stripeCustomerId, line_items: [{ price: targetPriceId, quantity: 1 }], discounts: [{ coupon: coupon.id }], billing_address_collection: 'required', tax_id_collection: { enabled: true }, automatic_tax: { enabled: Boolean(settings.automaticTaxEnabled) }, customer_update: { address: 'auto', name: 'auto' }, success_url: `${new URL('/registration/success', env.frontendUrl).toString()}?session_id={CHECKOUT_SESSION_ID}`, cancel_url: new URL('/settings', env.frontendUrl).toString(), metadata: { civicpathOrganizationId: organization.id, civicpathUserId: req.auth.sub, civicpathSubscriptionId: nextSubscription.id, civicpathPlanCode: targetPlan.code, councilProofConversionCreditAud: '495' }, subscription_data: { metadata: { civicpathOrganizationId: organization.id, civicpathUserId: req.auth.sub, civicpathSubscriptionId: nextSubscription.id, civicpathPlanCode: targetPlan.code, councilProofConversionCreditAud: '495' } } });
+    const session = await stripe.checkout.sessions.create({ mode: 'subscription', customer: profile.stripeCustomerId, ...taxParameters, discounts: [{ coupon: coupon.id }], billing_address_collection: 'required', tax_id_collection: { enabled: true }, customer_update: { address: 'auto', name: 'auto' }, success_url: `${new URL('/registration/success', env.frontendUrl).toString()}?session_id={CHECKOUT_SESSION_ID}`, cancel_url: new URL('/settings', env.frontendUrl).toString(), metadata: { civicpathOrganizationId: organization.id, civicpathUserId: req.auth.sub, civicpathSubscriptionId: nextSubscription.id, civicpathPlanCode: targetPlan.code, councilProofConversionCreditAud: '495' }, subscription_data: { metadata: { civicpathOrganizationId: organization.id, civicpathUserId: req.auth.sub, civicpathSubscriptionId: nextSubscription.id, civicpathPlanCode: targetPlan.code, councilProofConversionCreditAud: '495' } } });
     await nextSubscription.update({ billingReference: session.id, entitlements: { ...(nextSubscription.entitlements || {}), stripeCheckoutSessionId: session.id, stripeCouponId: coupon.id } });
     await platformAudit(req, organization.id, 'council_proof_conversion_checkout_created', { proofSubscriptionId: proofSubscription.id, newSubscriptionId: nextSubscription.id, stripeCheckoutSessionId: session.id, stripeCouponId: coupon.id });
     return res.json({ data: { checkoutUrl: session.url, conversionCreditAud: 495 } });
@@ -253,9 +268,9 @@ export async function cancelCustomerPlan(req, res, next) {
       ? await stripe.subscriptions.cancel(subscription.billingReference)
       : await stripe.subscriptions.update(subscription.billingReference, { cancel_at_period_end: true });
     if (value.when === 'immediate') await deactivateAccess({ organization: customer, subscription, eventId: `admin_cancel_${Date.now()}`, status: 'cancelled' });
-    else await subscription.update({ entitlements: { ...(subscription.entitlements || {}), cancelAtPeriodEnd: true, cancellationReason: value.reason, currentPeriodEnd: result.current_period_end || null } });
+    else await subscription.update({ entitlements: { ...(subscription.entitlements || {}), cancelAtPeriodEnd: true, cancellationReason: value.reason, currentPeriodEnd: subscriptionPeriodEnd(result)?.toISOString() || null } });
     await platformAudit(req, customer.id, 'stripe_subscription_cancellation_requested', { when: value.when, reason: value.reason, stripeSubscriptionId: result.id });
-    return res.json({ data: { cancelled: value.when === 'immediate', endsAt: result.current_period_end ? new Date(result.current_period_end * 1000) : null } });
+    return res.json({ data: { cancelled: value.when === 'immediate', endsAt: subscriptionPeriodEnd(result) } });
   } catch (error) { return next(error); }
 }
 

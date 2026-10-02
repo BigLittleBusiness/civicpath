@@ -5,7 +5,7 @@ import { sequelize } from '../config/database.js';
 import { BillingProfile, Organization, PasswordResetToken, ProductPlan, Subscription, User, AuditLog } from '../models/index.js';
 import { consumeAltchaPayload, fingerprint, issueAltchaChallenge } from '../services/altchaProtection.js';
 import { accountActivatedMessage, createSecureToken, hashToken, passwordResetMessage, registrationReceiptMessage, sendTransactionalEmail } from '../services/accountNotifications.js';
-import { BillingConfigurationError, getStripeClient, priceIdForPlan } from '../services/stripeBilling.js';
+import { BillingConfigurationError, checkoutTaxParameters, getStripeClient, priceIdForPlan } from '../services/stripeBilling.js';
 import { env } from '../config/env.js';
 
 const registrationSchema = Joi.object({
@@ -71,6 +71,7 @@ export async function registerAndStartCheckout(req, res, next) {
 
     const { stripe, settings } = await getStripeClient();
     const priceId = priceIdForPlan(plan, settings);
+    const taxParameters = checkoutTaxParameters({ settings, priceId }); // Validated before any record or Stripe customer is created.
     const passwordHash = await bcrypt.hash(value.password, 12);
 
     const registration = await sequelize.transaction(async (transaction) => {
@@ -99,14 +100,15 @@ export async function registerAndStartCheckout(req, res, next) {
         mode: isCouncilProof ? 'payment' : 'subscription',
         customer: customer.id,
         client_reference_id: registration.organization.id,
-        line_items: [{ price: priceId, quantity: 1 }],
+        ...taxParameters,
         success_url: `${appUrl('/registration/success')}?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${appUrl('/register')}?checkout=cancelled`,
         billing_address_collection: 'required',
         tax_id_collection: { enabled: true },
-        automatic_tax: { enabled: Boolean(settings.automaticTaxEnabled) },
         customer_update: { address: 'auto', name: 'auto' },
-        metadata: { civicpathOrganizationId: registration.organization.id, civicpathUserId: registration.user.id, civicpathSubscriptionId: registration.subscription.id, civicpathPlanCode: plan.code, lifecycleVersion: '1' },
+        // One-off Council Proof payments otherwise produce no invoice; a tax invoice showing GST is required.
+        invoice_creation: isCouncilProof ? { enabled: true, invoice_data: { metadata: { civicpathOrganizationId: registration.organization.id, civicpathPlanCode: plan.code } } } : undefined,
+        metadata:{ civicpathOrganizationId: registration.organization.id, civicpathUserId: registration.user.id, civicpathSubscriptionId: registration.subscription.id, civicpathPlanCode: plan.code, lifecycleVersion: '1' },
         subscription_data: isCouncilProof ? undefined : { metadata: { civicpathOrganizationId: registration.organization.id, civicpathUserId: registration.user.id, civicpathSubscriptionId: registration.subscription.id, civicpathPlanCode: plan.code } },
       });
       await registration.subscription.update({ billingReference: session.subscription || session.id, entitlements: { pendingReason: 'Awaiting verified Stripe payment', stripeCheckoutSessionId: session.id } });

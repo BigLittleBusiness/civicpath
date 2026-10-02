@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { accountActivatedMessage, passwordResetMessage, refundRequestedMessage, registrationReceiptMessage } from '../src/services/accountNotifications.js';
-import { BillingConfigurationError, priceIdForPlan } from '../src/services/stripeBilling.js';
+import { BillingConfigurationError, checkoutTaxParameters, invoicePaymentIntentId, priceIdForPlan, subscriptionPeriodEnd } from '../src/services/stripeBilling.js';
 
 function assertQuartermarkEmail(message) {
   assert.match(message.html, /alt="CivicPath"/);
@@ -42,4 +42,19 @@ test('Stripe price selection permits only an approved mapped plan', () => {
   assert.equal(priceIdForPlan({ code: 'civicpath-core' }, { corePriceId: 'price_core' }), 'price_core');
   assert.throws(() => priceIdForPlan({ code: 'civicpath-core' }, { corePriceId: '' }), BillingConfigurationError);
   assert.throws(() => priceIdForPlan({ code: 'unknown' }, {}), BillingConfigurationError);
+});
+
+test('checkout always applies Stripe Tax so Australian customers are charged GST, and refuses to run without it', () => {
+  assert.deepEqual(checkoutTaxParameters({ settings: { automaticTaxEnabled: true }, priceId: 'price_core' }), { automatic_tax: { enabled: true }, line_items: [{ price: 'price_core', quantity: 1 }] });
+  assert.throws(() => checkoutTaxParameters({ settings: { automaticTaxEnabled: false }, priceId: 'price_core' }), BillingConfigurationError);
+});
+
+test('Stripe period end and invoice payment intent are read from both pre-basil and basil API shapes', () => {
+  assert.equal(subscriptionPeriodEnd({ current_period_end: 1_800_000_000 }).getTime(), 1_800_000_000_000);
+  assert.equal(subscriptionPeriodEnd({ items: { data: [{ current_period_end: 1_800_000_000 }, { current_period_end: 1_700_000_000 }] } }).getTime(), 1_800_000_000_000);
+  assert.equal(subscriptionPeriodEnd({ items: { data: [] } }), null);
+  assert.equal(subscriptionPeriodEnd(null), null);
+  assert.equal(invoicePaymentIntentId({ payment_intent: 'pi_legacy' }), 'pi_legacy');
+  assert.equal(invoicePaymentIntentId({ payments: { data: [{ status: 'open', payment: { payment_intent: 'pi_open' } }, { status: 'paid', payment: { payment_intent: { id: 'pi_paid' } } }] } }), 'pi_paid');
+  assert.equal(invoicePaymentIntentId({}), null);
 });

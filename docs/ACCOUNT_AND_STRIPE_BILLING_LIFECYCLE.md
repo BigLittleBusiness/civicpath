@@ -11,7 +11,7 @@ This implementation enables a council to create a CivicPath workspace, choose a 
 | Policy | Implemented behaviour |
 |---|---|
 | Billing cadence | Essentials and Core use annual recurring Stripe Prices. |
-| Currency and tax | Public prices are AUD excluding GST. Stripe Checkout can collect billing address/tax ID and calculate tax where the System Administrator enables automatic tax. |
+| Currency and tax | Public prices are AUD **excluding GST**. Every Checkout uses Stripe Tax: customers with an Australian billing address are charged **10% GST** on top of the price (e.g. Core $5,000 + $500 GST); New Zealand customers are not charged Australian GST. Checkout is refused while Stripe Tax is disabled, so an Australian sale can never proceed without GST. Council Proof one-off payments also produce a Stripe tax invoice. |
 | Council Proof | A $495 one-off Stripe payment activates a 60-day Council Proof workspace. An organisation administrator can select CivicPath Essentials or Core in secure conversion Checkout within 30 days of the Proof end; CivicPath creates a one-time AUD $495 Stripe coupon and applies it before the annual payment is confirmed. |
 | Access | The workspace is activated only after CivicPath verifies the Stripe payment event. Failed payment and subscription cancellation revoke normal tenant sessions. |
 | Plan changes | A System Administrator may change a subscription immediately; Stripe calculates the applicable adjustment/invoice. A fresh password + MFA step-up is mandatory. |
@@ -62,7 +62,29 @@ Every privileged action records its actor, reason, target, source IP and Stripe 
 | Essentials Price ID | Annual recurring AUD Price | Yes for Essentials |
 | Core Price ID | Annual recurring AUD Price | Yes for Core |
 | Customer Portal configuration | `bpc_…` | Optional; Stripe default otherwise |
-| Automatic tax | Stripe Tax setting | Optional, but choose deliberately |
+| Automatic tax | Stripe Tax enabled, with an active AU registration | **Yes**: checkout is refused without it |
+
+## GST configuration in Stripe
+
+- Each CivicPath Price must have **tax behaviour `exclusive`**. The account default (`inferred_by_currency`) treats AUD prices as GST-*inclusive*, which would hide GST inside the list price.
+- CivicPath products use tax code `txcd_10103001` (Software as a service, business use).
+- Stripe Tax must be active with an **Australian registration** (Stripe → Tax → Registrations).
+- Use the CivicPath Customer Portal configuration (metadata `platform=civicpath`): payment methods, invoices, billing details and tax ID only; plan changes and cancellations stay with the System Administrator. The account's default portal belongs to GrantMaestro, so the CivicPath configuration ID must be saved in System Admin.
+
+## Stripe API versions
+
+The API uses the stripe-node pinned version (`2025-08-27.basil`). Basil moved `current_period_end` onto subscription items and replaced `invoice.payment_intent` with `invoice.payments`; CivicPath reads both shapes and re-reads paid invoices from Stripe (expanding `payments`) so refunds remain possible. Pin the production webhook endpoint to the same API version.
+
+## Local development webhooks
+
+Stripe cannot reach `localhost`, so forward events with the Stripe CLI and save its signing secret in System Admin → Billing & Stripe:
+
+```
+stripe listen --api-key sk_test_… --print-secret
+stripe listen --api-key sk_test_… --forward-to localhost:3015/v1/billing/stripe/webhook --events checkout.session.completed,invoice.created,invoice.finalized,invoice.paid,invoice.payment_failed,customer.subscription.updated,customer.subscription.deleted,refund.created,refund.updated,refund.failed
+```
+
+The Stripe account is shared with other Big Little Business products; events that do not match a CivicPath organisation are recorded as `ignored`.
 
 ## Required webhook events
 

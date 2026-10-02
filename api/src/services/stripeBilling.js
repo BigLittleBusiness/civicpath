@@ -64,6 +64,29 @@ export async function planForStripePrice(priceId) {
   return code ? ProductPlan.findOne({ where: { code } }) : null;
 }
 
+// CivicPath prices are AUD excluding GST (Stripe Prices are tax_behavior "exclusive"), and Australian billing
+// addresses must always attract 10% GST. Stripe Tax applies it from the billing address using the account's AU
+// registration (NZ customers are not charged AU GST). Stripe has removed address-based dynamic tax rates, so there is
+// no safe manual fallback: checkout is refused rather than risk an Australian sale without GST.
+export function checkoutTaxParameters({ settings, priceId }) {
+  if (!settings.automaticTaxEnabled) throw new BillingConfigurationError('Online checkout is unavailable until Stripe Tax is enabled for GST. Please use the CivicPath contact form to arrange your subscription.');
+  return { automatic_tax: { enabled: true }, line_items: [{ price: priceId, quantity: 1 }] };
+}
+
+// Stripe API 2025-03-31.basil moved current_period_end from the subscription to its items; accept both shapes.
+export function subscriptionPeriodEnd(subscription) {
+  const seconds = subscription?.current_period_end || Math.max(0, ...(subscription?.items?.data || []).map((item) => Number(item.current_period_end || 0)));
+  return seconds ? new Date(seconds * 1000) : null;
+}
+
+// Stripe API basil removed invoice.payment_intent in favour of invoice.payments (an expandable list).
+export function invoicePaymentIntentId(invoice) {
+  if (invoice?.payment_intent) return stripeSubscriptionId(invoice.payment_intent);
+  const payments = invoice?.payments?.data || [];
+  const paid = payments.find((entry) => entry.status === 'paid') || payments[0];
+  return stripeSubscriptionId(paid?.payment?.payment_intent) || null;
+}
+
 export function stripeCustomerId(value) {
   return typeof value === 'string' ? value : value?.id || null;
 }
