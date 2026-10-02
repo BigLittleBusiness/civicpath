@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import { AltchaVerification } from '../components/AltchaVerification';
 import './AccountLifecyclePage.css';
 
-function Brand() { return <Link className="account-mobile-brand" to="/login"><img src="/gate-mark.png" alt=""/> CivicPath</Link>; }
+function Brand() { return <Link className="account-mobile-brand" to="/login"><img src="/civicpath-quartermark.png" alt=""/> CivicPath</Link>; }
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState(''); const [altcha, setAltcha] = useState(''); const [key, setKey] = useState(0); const [error, setError] = useState(''); const [submitted, setSubmitted] = useState(false); const [loading, setLoading] = useState(false);
