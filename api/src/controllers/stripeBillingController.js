@@ -3,8 +3,9 @@ import { Op } from 'sequelize';
 import { sequelize } from '../config/database.js';
 import { AuditLog, BillingEvent, BillingInvoice, BillingProfile, BillingRefund, Organization, ProductPlan, Subscription, User } from '../models/index.js';
 import { accountActivatedMessage, refundRequestedMessage, sendTransactionalEmail } from '../services/accountNotifications.js';
-import { BillingConfigurationError, checkoutTaxParameters, getStripeBillingSettings, getStripeClient, invoicePaymentIntentId, planForStripePrice, priceIdForPlan, stripeCustomerId, stripeStatusToCivicPath, stripeSubscriptionId, subscriptionPeriodEnd } from '../services/stripeBilling.js';
+import { BillingConfigurationError, checkoutTaxParameters, getStripeBillingSettings, getStripeClient, invoicePaymentIntentId, invoiceTaxAmount, planForStripePrice, priceIdForPlan, stripeCustomerId, stripeStatusToCivicPath, stripeSubscriptionId, subscriptionPeriodEnd } from '../services/stripeBilling.js';
 import { env } from '../config/env.js';
+import { invoiceView, pickCurrentSubscription, priceWithGst, stripeDashboardUrl, subscriptionView } from '../services/billingSummary.js';
 
 const changePlanSchema = Joi.object({ planCode: Joi.string().valid('council-proof', 'essentials', 'civicpath-core').required() });
 const councilProofConversionSchema = Joi.object({ targetPlanCode: Joi.string().valid('essentials', 'civicpath-core').required() });
@@ -55,6 +56,8 @@ async function upsertInvoice(invoice, organizationId, subscriptionId = null) {
     amountDue: Number(invoice.amount_due || 0),
     amountPaid: Number(invoice.amount_paid || 0),
     amountRemaining: Number(invoice.amount_remaining || 0),
+    amountSubtotal: Number(invoice.subtotal || 0),
+    amountTax: invoiceTaxAmount(invoice),
     hostedInvoiceUrl: invoice.hosted_invoice_url || null,
     invoicePdfUrl: invoice.invoice_pdf || null,
     dueAt: invoice.due_date ? new Date(invoice.due_date * 1000) : null,
@@ -228,7 +231,51 @@ export async function customerBillingSummary(req, res, next) {
       BillingRefund.findAll({ where: { organizationId }, order: [['createdAt', 'DESC']], limit: 50 }),
       BillingEvent.findAll({ where: { organizationId }, order: [['createdAt', 'DESC']], limit: 50, attributes: ['id', 'eventType', 'stripeEventId', 'processingStatus', 'error', 'createdAt', 'processedAt'] }),
     ]);
-    return res.json({ data: { profile, subscriptions, invoices, refunds, events } });
+    const organization = await Organization.findByPk(organizationId, { attributes: ['country'] });
+    const settings = await getStripeBillingSettings();
+    const current = subscriptionView(pickCurrentSubscription(subscriptions));
+    return res.json({ data: {
+      profile, subscriptions, refunds, events,
+      current,
+      pricing: priceWithGst(current?.annualPriceAud ?? null, profile?.billingAddress?.country || organization?.country),
+      invoices: invoices.map((invoice) => ({ ...invoiceView(invoice), stripePaymentIntentId: invoice.stripePaymentIntentId, amountDue: invoice.amountDue })),
+      stripeLinks: {
+        customer: profile?.stripeCustomerId ? stripeDashboardUrl(settings.mode, `customers/${profile.stripeCustomerId}`) : null,
+        subscription: current?.stripeSubscriptionId ? stripeDashboardUrl(settings.mode, `subscriptions/${current.stripeSubscriptionId}`) : null,
+      },
+    } });
+  } catch (error) { return next(error); }
+}
+
+// Council-facing subscription summary. Every workspace role sees the plan and access period; only the organisation
+// administrator (who holds billing authority) receives invoices and billing actions.
+export async function councilSubscriptionSummary(req, res, next) {
+  try {
+    const organizationId = req.tenant.organizationId;
+    const isBillingAdmin = req.auth.role === 'org_admin';
+    const [organization, profile, subscriptions, invoices] = await Promise.all([
+      Organization.findByPk(organizationId, { attributes: ['id', 'name', 'country', 'isDemo'] }),
+      BillingProfile.findOne({ where: { organizationId } }),
+      Subscription.findAll({ where: { organizationId }, include: [{ model: ProductPlan }], order: [['createdAt', 'DESC']] }),
+      isBillingAdmin ? BillingInvoice.findAll({ where: { organizationId }, order: [['createdAt', 'DESC']], limit: 12 }) : [],
+    ]);
+    const current = subscriptionView(pickCurrentSubscription(subscriptions));
+    const billingCountry = profile?.billingAddress?.country || organization?.country;
+    let conversion = null;
+    if (current?.planCode === 'council-proof' && current.accessActive && current.endsAt) {
+      const deadline = new Date(current.endsAt.getTime() + 30 * 24 * 60 * 60 * 1000);
+      conversion = { creditAud: 495, deadline, available: isBillingAdmin && Boolean(profile?.stripeCustomerId) && deadline > new Date() };
+    }
+    return res.json({ data: {
+      organisation: { name: organization?.name, isDemo: Boolean(organization?.isDemo) },
+      subscription: current,
+      pricing: priceWithGst(current?.annualPriceAud ?? null, billingCountry),
+      billingAdmin: isBillingAdmin,
+      billingEmail: isBillingAdmin ? profile?.billingEmail || null : undefined,
+      portalAvailable: isBillingAdmin && Boolean(profile?.stripeCustomerId),
+      invoices: invoices.map(invoiceView),
+      conversion,
+    } });
   } catch (error) { return next(error); }
 }
 

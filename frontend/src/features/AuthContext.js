@@ -3,6 +3,9 @@ import { api } from '../lib/api';
 
 const AuthContext = createContext(null);
 
+// Session user plus the access and organisation fields returned alongside it by the auth endpoints.
+const toSessionUser = (data) => ({ ...data.user, accessActive: data.accessActive, subscriptionStatus: data.subscriptionStatus, subscriptionPlanCode: data.subscriptionPlanCode, subscriptionEndsAt: data.subscriptionEndsAt, organisationName: data.organisationName, organisationIsDemo: data.organisationIsDemo });
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [state, setState] = useState('loading');
@@ -10,7 +13,7 @@ export function AuthProvider({ children }) {
   const refresh = async () => {
     try {
       const response = await api.get('/auth/me');
-      setUser({ ...response.data.data.user, accessActive: response.data.data.accessActive, subscriptionStatus: response.data.data.subscriptionStatus, subscriptionPlanCode: response.data.data.subscriptionPlanCode, subscriptionEndsAt: response.data.data.subscriptionEndsAt });
+      setUser(toSessionUser(response.data.data));
       setState('authenticated');
       return response.data.data.user;
     } catch {
@@ -21,7 +24,7 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => { refresh(); }, []);
-  const value = useMemo(() => ({ user, state, refresh, async signIn(credentials) { const response = await api.post('/auth/login', credentials); if (response.data.data.mfaRequired) { setUser(null); setState('mfa_pending'); return response.data.data; } const sessionUser = { ...response.data.data.user, accessActive: response.data.data.accessActive, subscriptionStatus: response.data.data.subscriptionStatus, subscriptionPlanCode: response.data.data.subscriptionPlanCode, subscriptionEndsAt: response.data.data.subscriptionEndsAt }; setUser(sessionUser); setState('authenticated'); return sessionUser; }, async completeMfa(path, payload) { const response = await api.post(path, payload); setUser({ ...response.data.data.user, accessActive: response.data.data.accessActive, subscriptionStatus: response.data.data.subscriptionStatus, subscriptionPlanCode: response.data.data.subscriptionPlanCode, subscriptionEndsAt: response.data.data.subscriptionEndsAt }); setState('authenticated'); return response.data.data; }, async signOut() { await api.post('/auth/logout'); setUser(null); setState('anonymous'); } }), [user, state]);
+  const value = useMemo(() => ({ user, state, refresh, async signIn(credentials) { const response = await api.post('/auth/login', credentials); if (response.data.data.mfaRequired) { setUser(null); setState('mfa_pending'); return response.data.data; } const sessionUser = toSessionUser(response.data.data); setUser(sessionUser); setState('authenticated'); return sessionUser; }, async completeMfa(path, payload) { const response = await api.post(path, payload); setUser(toSessionUser(response.data.data)); setState('authenticated'); return response.data.data; }, async signOut() { await api.post('/auth/logout'); setUser(null); setState('anonymous'); } }), [user, state]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

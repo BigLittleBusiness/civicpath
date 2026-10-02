@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import Joi from 'joi';
 import bcrypt from 'bcryptjs';
-import { User, AuditLog, ProductPlan, Subscription } from '../models/index.js';
+import { User, AuditLog, Organization, ProductPlan, Subscription } from '../models/index.js';
 import { env } from '../config/env.js';
 import { decryptConfiguration, encryptConfiguration } from '../services/encryption.js';
 import { createTotpSecret, buildOtpauthUrl, createQrCode, verifyTotp, createRecoveryCodes, hashRecoveryCodes, consumeRecoveryCode } from '../services/mfa.js';
@@ -15,10 +15,12 @@ function sessionUser(user) {
 }
 
 async function accessState(user) {
-  if (user.role === 'platform_admin') return { accessActive: true, subscriptionStatus: 'platform' };
+  const organisation = await Organization.findByPk(user.organizationId, { attributes: ['name', 'isDemo'] });
+  const organisationFields = { organisationName: organisation?.name || null, organisationIsDemo: Boolean(organisation?.isDemo) };
+  if (user.role === 'platform_admin') return { accessActive: true, subscriptionStatus: 'platform', ...organisationFields };
   const subscription = await Subscription.findOne({ where: { organizationId: user.organizationId, status: 'active' }, include: [{ model: ProductPlan }], order: [['createdAt', 'DESC']] }) || await Subscription.findOne({ where: { organizationId: user.organizationId }, include: [{ model: ProductPlan }], order: [['createdAt', 'DESC']] });
   const accessActive = subscription?.status === 'active' && (!subscription.endsAt || new Date(subscription.endsAt) > new Date());
-  return { accessActive, subscriptionStatus: subscription?.status || 'not_started', subscriptionPlanCode: subscription?.ProductPlan?.code || null, subscriptionEndsAt: subscription?.endsAt || null };
+  return { accessActive, subscriptionStatus: subscription?.status || 'not_started', subscriptionPlanCode: subscription?.ProductPlan?.code || null, subscriptionEndsAt: subscription?.endsAt || null, ...organisationFields };
 }
 
 function cookieOptions() { return { httpOnly: true, secure: env.isProduction, sameSite: env.isProduction ? 'none' : 'lax', domain: env.cookieDomain, maxAge: 8 * 60 * 60 * 1000 }; }

@@ -64,6 +64,14 @@ Every privileged action records its actor, reason, target, source IP and Stripe 
 | Customer Portal configuration | `bpc_…` | Optional; Stripe default otherwise |
 | Automatic tax | Stripe Tax enabled, with an active AU registration | **Yes**: checkout is refused without it |
 
+## Where subscriptions are shown
+
+- **System Admin → Command centre:** annual recurring revenue (excl. GST), cash collected in the last 30 days (incl. GST), active annual plans and Council Proofs, failed payments, abandoned checkouts and open support. The operational queue flags failed payments, Proofs ending within 14 days, cancellations at period end and registrations awaiting checkout.
+- **System Admin → Councils:** every council's current plan, status, access period (with renewal or end date), annual value with GST, active/invited users and last payment, with filters. The current subscription is the newest unexpired active one, otherwise the newest record that is not an abandoned checkout.
+- **Customer 360° (open a council):** Billing tab with the subscription summary, Stripe dashboard links, plan change, cancellation, invoices (subtotal, GST, total, PDF) and per-invoice refunds; Users tab with every user's role, status and last sign-in.
+- **Workspace settings → Subscription (council users):** plan, status, access period and price with GST for every role; invoices, the Stripe billing portal and the Council Proof upgrade (showing the price after the $495 credit) for the organisation administrator. Data comes from `GET /v1/billing/subscription`.
+- Invoice GST is mirrored from Stripe (`amount_subtotal`, `amount_tax`, migration `011_billing_invoice_tax_amounts.mjs`, which also backfills existing invoices).
+
 ## GST configuration in Stripe
 
 - Each CivicPath Price must have **tax behaviour `exclusive`**. The account default (`inferred_by_currency`) treats AUD prices as GST-*inclusive*, which would hide GST inside the list price.

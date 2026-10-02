@@ -21,6 +21,7 @@ node db/migrations/007_enquiry_follow_up_and_support_attachments.mjs
 node db/migrations/008_council_proof_confirmation_delivery.mjs
 node db/migrations/009_strategy_delivery_workspace.mjs
 node db/migrations/010_stripe_account_billing_lifecycle.mjs
+node db/migrations/011_billing_invoice_tax_amounts.mjs
 
 cd "$APP_DIR/frontend"
 npm ci --legacy-peer-deps

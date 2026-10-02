@@ -1,1 +1,11 @@
-.privileged-backdrop{position:fixed;inset:0;z-index:70;background:rgba(15,31,24,.55);display:grid;place-items:center;padding:20px}.privileged-modal{width:min(100%,510px);background:#FFFFFF;border:1px solid #C8D8D1;box-shadow:0 24px 64px rgba(4,18,11,.32);padding:30px}.privileged-modal h3{font-family:Georgia,'Source Serif 4',serif;font-size:1.8rem;letter-spacing:-.035em;color:#163133;margin:8px 0 12px}.privileged-modal p{color:#60716D;line-height:1.55}.privileged-modal label{display:grid;gap:7px;margin-top:16px;font-size:.75rem;letter-spacing:.08em;font-weight:700;text-transform:uppercase;color:#31524E}.privileged-modal input{border:1px solid #C8D8D1;background:#fff;padding:12px;font:500 1rem/1.2 inherit;letter-spacing:.04em}.privileged-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}@media(max-width:560px){.privileged-modal{padding:24px}.privileged-actions{flex-direction:column-reverse}.privileged-actions button{width:100%;justify-content:center}}
+.privileged-backdrop{position:fixed;inset:0;z-index:70;background:rgba(10,24,25,.45);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px;animation:drawer-fade .15s ease}
+.privileged-modal{width:min(100%,460px);background:#FFFFFF;border:1px solid #E2E8E4;border-radius:16px;box-shadow:0 24px 64px rgba(10,24,25,.28);padding:28px}
+.privileged-modal h3{font-size:21px;line-height:1.25;letter-spacing:-.02em;color:#10292B;margin:6px 0 10px}
+.privileged-modal p{color:#677A74;line-height:1.55;font-size:13px;margin:0}
+.privileged-modal label{display:grid;gap:6px;margin-top:16px;font-size:12px;font-weight:600;color:#2C4442}
+.privileged-modal input{min-height:40px;padding:0 12px;border:1px solid #CFD9D4;border-radius:9px;font:inherit;font-size:14px;color:#10292B;outline:0}
+.privileged-modal input:focus{border-color:var(--green);box-shadow:0 0 0 3px #E6F2EC}
+.privileged-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+.privileged-actions button{min-height:38px;border-radius:9px;padding:0 15px}
+.privileged-modal .form-message{margin-top:12px;padding:9px 11px;border-radius:8px;background:#FBEAE6;color:#B0412E;font-size:12.5px}
+@keyframes drawer-fade{from{opacity:0}to{opacity:1}}

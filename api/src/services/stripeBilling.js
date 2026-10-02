@@ -87,6 +87,13 @@ export function invoicePaymentIntentId(invoice) {
   return stripeSubscriptionId(paid?.payment?.payment_intent) || null;
 }
 
+// Total tax (GST) on an invoice: basil exposes total_taxes; earlier versions used tax / total_tax_amounts.
+export function invoiceTaxAmount(invoice) {
+  if (Array.isArray(invoice?.total_taxes)) return invoice.total_taxes.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  if (Number.isFinite(invoice?.tax)) return Number(invoice.tax);
+  return (invoice?.total_tax_amounts || []).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+}
+
 export function stripeCustomerId(value) {
   return typeof value === 'string' ? value : value?.id || null;
 }

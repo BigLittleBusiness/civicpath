@@ -85,6 +85,8 @@ export const BillingInvoice = sequelize.define('BillingInvoice', {
   amountDue: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
   amountPaid: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
   amountRemaining: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+  amountSubtotal: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+  amountTax: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
   hostedInvoiceUrl: { type: DataTypes.STRING(1000), allowNull: true },
   invoicePdfUrl: { type: DataTypes.STRING(1000), allowNull: true },
   dueAt: { type: DataTypes.DATE, allowNull: true },

@@ -12,7 +12,7 @@ import { adminRouter } from './admin.js';
 import { submitPortfolioReadinessPulse } from '../../controllers/publicPulseController.js';
 import { getPublicContactChallenge, submitPublicContactEnquiry } from '../../controllers/publicContactController.js';
 import { publicPlans } from '../../controllers/accountLifecycleController.js';
-import { createCustomerPortal, startCouncilProofConversionCheckout } from '../../controllers/stripeBillingController.js';
+import { councilSubscriptionSummary, createCustomerPortal, startCouncilProofConversionCheckout } from '../../controllers/stripeBillingController.js';
 import { getSupportContactChallenge } from '../../controllers/supportContactController.js';
 import { submitSupportContactWithAttachments, uploadSupportAttachments } from '../../controllers/supportAttachmentController.js';
 import {
@@ -57,6 +57,7 @@ v1Router.use('/admin', requireAuth, tenantScope, adminRouter);
 v1Router.use(requireAuth, tenantScope);
 v1Router.get('/support/contact-challenge', getSupportContactChallenge);
 v1Router.post('/support/contact-enquiries', uploadSupportAttachments, submitSupportContactWithAttachments);
+v1Router.get('/billing/subscription', councilSubscriptionSummary);
 v1Router.post('/billing/customer-portal', requireRoles('org_admin'), createCustomerPortal);
 v1Router.post('/billing/council-proof-conversion-checkout', requireRoles('org_admin'), startCouncilProofConversionCheckout);
 v1Router.use(requireActiveEntitlement);

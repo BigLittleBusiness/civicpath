@@ -12,6 +12,7 @@
     "db:migrate:enquiries": "node db/migrations/007_enquiry_follow_up_and_support_attachments.mjs",
     "db:migrate:proof-confirmations": "node db/migrations/008_council_proof_confirmation_delivery.mjs",
     "db:migrate:strategy-delivery": "node db/migrations/009_strategy_delivery_workspace.mjs",
+    "db:migrate:invoice-tax": "node db/migrations/011_billing_invoice_tax_amounts.mjs",
     "db:migrate:billing-lifecycle": "node db/migrations/010_stripe_account_billing_lifecycle.mjs",
     "db:seed-demo": "node db/seeds/001_demo_workspace.mjs",
     "test": "node --test",
