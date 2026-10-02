@@ -9,6 +9,7 @@ for required in \
   infra/deploy-binarylane.sh \
   infra/configure-binarylane-nginx-ssl.sh \
   api/.env.binarylane.example \
+  api/db/migrate.mjs \
   api/db/migrations/006_public_contact_and_altcha.mjs \
   api/db/migrations/008_council_proof_confirmation_delivery.mjs \
   api/db/migrations/009_strategy_delivery_workspace.mjs \
