@@ -1,7 +1,7 @@
 // DESIGN: Civic Field Manual — grounded regional civic design, river-slate surfaces, eucalypt signals and a practical route from priority to delivery.
 import { useState } from "react";
 
-const gateLogo = "/assets/civicpath-gate.webp";
+const quartermarkLogo = "/assets/civicpath-quartermark.png";
 const heroImage = "/assets/civicpath-hero-regional-strategy.webp";
 const readinessImage = "/assets/civicpath-project-readiness.webp";
 const workshopImage = "/assets/civicpath-partnership-workshop.webp";
@@ -97,7 +97,7 @@ export default function Home() {
     <main>
       <header className="site-header">
         <a className="brand" href="#top" aria-label="CivicPath home">
-          <img src={gateLogo} alt="CivicPath logo" />
+          <img src={quartermarkLogo} alt="CivicPath logo" />
           <span>CivicPath</span>
         </a>
         <button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-controls="site-nav">
@@ -125,7 +125,7 @@ export default function Home() {
           <p className="hero-note">Built for councils balancing growth, grants and delivery with limited capacity.</p>
         </div>
         <div className="hero-field-note" aria-label="CivicPath field note">
-          <div className="field-note-head"><img src={gateLogo} alt="" /><span>Field note / 01</span></div>
+          <div className="field-note-head"><img src={quartermarkLogo} alt="" /><span>Field note / 01</span></div>
           <p>Every live project needs a visible next move.</p>
           <div><b>Scope</b><b>Readiness</b><b className="decision-word">Decision</b></div>
         </div>
@@ -220,7 +220,7 @@ export default function Home() {
           <p className="serif-note">Buy the product that solves the problem you have. Add the other only when it adds value.</p>
         </div>
         <div className="connection-diagram" aria-label="Optional CivicPath and GrantMaestro connection">
-          <div className="product-node civic-node"><img src={gateLogo} alt="" /><strong>CivicPath</strong><span>Priorities · projects · readiness</span></div>
+          <div className="product-node civic-node"><img src={quartermarkLogo} alt="" /><strong>CivicPath</strong><span>Priorities · projects · readiness</span></div>
           <div className="optional-link"><span>Optional connection</span><i>↔</i></div>
           <div className="product-node grant-node"><strong>GrantMaestro</strong><span>Opportunities · applications · acquittals</span></div>
         </div>
@@ -236,7 +236,7 @@ export default function Home() {
           <div className="proof-points">
             <span>15 projects</span><span>60 days</span><span>$495</span>
           </div>
-          <a className="button button-light" href="/contact">Discuss the Council Proof <span>→</span></a>
+          <a className="button button-light" href="https://app.civicpath.com.au/register?plan=council-proof">Start a Council Proof <span>→</span></a>
           <p className="small-print">The full $495 paid Proof fee is applied as a conversion credit against your first annual CivicPath subscription when your Council proceeds within 30 days of the final Proof review.</p>
         </div>
       </section>
@@ -258,7 +258,7 @@ export default function Home() {
               <p className="price"><span>{tier.price}</span> {tier.term}</p>
               <p className="price-description">{tier.description}</p>
               <ul>{tier.points.map((point) => <li key={point}>{point}</li>)}</ul>
-              <a href="/contact" className="text-link">Discuss this option <span>→</span></a>
+              <a href={`https://app.civicpath.com.au/register?plan=${tier.name === 'Council Proof' ? 'council-proof' : tier.name.includes('Essentials') ? 'essentials' : 'civicpath-core'}`} className="text-link">Choose this option <span>→</span></a>
               {tier.credit && <div className="price-credit" aria-label="Council Proof conversion credit"><span aria-hidden="true">↗</span><div><b>{tier.credit}</b><p>The paid Proof fee is applied to your Council’s first annual subscription if it proceeds within 30 days of the final Proof review.</p></div></div>}
             </article>
           ))}
@@ -314,7 +314,7 @@ export default function Home() {
       </section>
 
       <footer className="site-footer">
-        <a className="brand" href="#top"><img src={gateLogo} alt="CivicPath logo" /><span>CivicPath</span></a>
+        <a className="brand" href="#top"><img src={quartermarkLogo} alt="CivicPath logo" /><span>CivicPath</span></a>
         <p>Strategic project readiness for regional councils.</p>
       </footer>
     </main>
