@@ -130,6 +130,19 @@ export const PasswordResetToken = sequelize.define('PasswordResetToken', {
   requestedIpHash: { type: DataTypes.STRING(128), allowNull: true },
 }, { timestamps: true, updatedAt: false, underscored: true, paranoid: false, indexes: [{ name: 'prt_user_expiry', fields: ['user_id', 'expires_at', 'consumed_at'] }] });
 
+// One-time, hashed invitation records. The raw token is never persisted or returned after the invitation is created.
+export const CouncilInvitation = sequelize.define('CouncilInvitation', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  invitedBy: { type: DataTypes.UUID, allowNull: true },
+  email: { type: DataTypes.STRING(191), allowNull: false, validate: { isEmail: true } },
+  role: { type: DataTypes.ENUM('org_admin', 'portfolio_manager', 'contributor', 'executive'), allowNull: false },
+  tokenHash: { type: DataTypes.STRING(64), allowNull: false, unique: true },
+  expiresAt: { type: DataTypes.DATE, allowNull: false },
+  consumedAt: { type: DataTypes.DATE, allowNull: true },
+}, { timestamps: true, updatedAt: false, underscored: true, paranoid: false, indexes: [{ name: 'ci_user_expiry', fields: ['user_id', 'expires_at', 'consumed_at'] }, { name: 'ci_org_email', fields: ['organization_id', 'email'] }] });
+
 export const IntegrationConnection = sequelize.define('IntegrationConnection', {
   id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
   organizationId: { type: DataTypes.UUID, allowNull: false },
@@ -807,6 +820,11 @@ Organization.hasMany(BillingEvent, { foreignKey: 'organizationId' });
 BillingEvent.belongsTo(Organization, { foreignKey: 'organizationId' });
 User.hasMany(PasswordResetToken, { foreignKey: 'userId' });
 PasswordResetToken.belongsTo(User, { foreignKey: 'userId' });
+Organization.hasMany(CouncilInvitation, { foreignKey: 'organizationId' });
+CouncilInvitation.belongsTo(Organization, { foreignKey: 'organizationId' });
+User.hasMany(CouncilInvitation, { foreignKey: 'userId' });
+CouncilInvitation.belongsTo(User, { foreignKey: 'userId' });
+CouncilInvitation.belongsTo(User, { as: 'inviter', foreignKey: 'invitedBy' });
 Organization.hasMany(IntegrationConnection, { foreignKey: 'organizationId' });
 IntegrationConnection.belongsTo(Organization, { foreignKey: 'organizationId' });
 Organization.hasMany(SupportCase, { foreignKey: 'organizationId' });
@@ -941,4 +959,4 @@ PulseLeadResult.belongsTo(PublicLead, { foreignKey: 'leadId' });
 PublicLead.hasMany(PulseLeadNotification, { foreignKey: 'leadId' });
 PulseLeadNotification.belongsTo(PublicLead, { foreignKey: 'leadId' });
 PublicContactEnquiry.belongsTo(User, { as: 'followUpOwner', foreignKey: 'followUpOwnerId' });
-export const models = { Organization, User, ProductPlan, Subscription, BillingProfile, BillingInvoice, BillingRefund, BillingEvent, PasswordResetToken, IntegrationConnection, PlatformSetting, SupportCase, SupportAttachment, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, StrategicPlan, StrategyFocusArea, StrategyStatusDefinition, StrategyAction, StrategyActionProject, ActionMilestone, ActionDependency, QuarterlyReportingPeriod, QuarterlyActionUpdate, StrategyMeasure, StrategyDecision, StrategyStakeholder, StrategyRiskIssue, ActionFundingPosition, ActionEvidenceLink, StrategyReportSnapshot, StrategyAlert, AuditLog, PublicLead, PulseLeadSession, PulseLeadConsent, PulseLeadResult, PulseLeadNotification, PublicFormChallenge, PublicContactEnquiry };
+export const models = { Organization, User, ProductPlan, Subscription, BillingProfile, BillingInvoice, BillingRefund, BillingEvent, PasswordResetToken, CouncilInvitation, IntegrationConnection, PlatformSetting, SupportCase, SupportAttachment, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, StrategicPlan, StrategyFocusArea, StrategyStatusDefinition, StrategyAction, StrategyActionProject, ActionMilestone, ActionDependency, QuarterlyReportingPeriod, QuarterlyActionUpdate, StrategyMeasure, StrategyDecision, StrategyStakeholder, StrategyRiskIssue, ActionFundingPosition, ActionEvidenceLink, StrategyReportSnapshot, StrategyAlert, AuditLog, PublicLead, PulseLeadSession, PulseLeadConsent, PulseLeadResult, PulseLeadNotification, PublicFormChallenge, PublicContactEnquiry };

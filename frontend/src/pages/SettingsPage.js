@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { Icon } from '../components/Icon';
 import { SupportContactPanel } from '../components/SupportContactPanel';
 import { SubscriptionPanel } from '../components/SubscriptionPanel';
+import { PeopleAccessPanel } from '../components/PeopleAccessPanel';
 import { previewCsvImport } from '../lib/api';
 import { useAuth } from '../features/AuthContext';
 
 export default function SettingsPage() {
   const [imported, setImported] = useState(false);
   const [message, setMessage] = useState('');
+  const [section, setSection] = useState('general');
   const { user } = useAuth();
   const workspaceName = user?.organisationName || 'Council workspace';
   const handleFile = async (event) => {
@@ -25,12 +27,14 @@ export default function SettingsPage() {
 
   return <main className="page-content settings-page">
     <section className="settings-header"><div><p className="page-intro">Set up the workspace in the way your Council already works. CivicPath can start small and remain clear.</p><h2>Workspace settings</h2></div></section>
-    <section className="settings-layout"><aside className="settings-nav"><button className="selected" type="button">General</button><button type="button">People & access</button><button type="button">Portfolios</button><button type="button">Data imports</button><button type="button">Integrations</button><button type="button">Notifications</button><button type="button">Audit & security</button></aside><div className="settings-content">
+    <section className="settings-layout"><aside className="settings-nav"><button className={section === 'general' ? 'selected' : ''} type="button" onClick={() => setSection('general')}>General</button><button className={section === 'people' ? 'selected' : ''} type="button" onClick={() => setSection('people')}>People & access</button><button type="button" onClick={() => setSection('general')}>Portfolios</button><button type="button" onClick={() => setSection('general')}>Data imports</button><button type="button" onClick={() => setSection('general')}>Integrations</button><button type="button" onClick={() => setSection('general')}>Notifications</button><button type="button" onClick={() => setSection('general')}>Audit & security</button></aside><div className="settings-content">
+      {section === 'people' ? <PeopleAccessPanel /> : <>
       <section className="settings-card"><div><p className="card-eyebrow">Workspace identity</p><h3>{workspaceName}</h3><p className="card-copy">{user?.organisationIsDemo ? 'This is a protected sample workspace. Demonstration records are illustrative and distinct from live Council information.' : 'Your Council workspace. Records here are visible only to people in your organisation.'}</p></div><div className="field-grid"><label>Council or organisation name<input key={workspaceName} defaultValue={workspaceName} /></label><label>Country<select defaultValue="Australia"><option>Australia</option><option>New Zealand</option></select></label></div><button className="secondary-button" type="button">Save changes</button></section>
       <SubscriptionPanel />
       <section className="settings-card import-card"><div><p className="card-eyebrow">Data import</p><h3>Start with the work already in front of you.</h3><p className="card-copy">Import a prepared CSV file for projects, funding pathways or grants. Imported records are retained in your workspace; sample data is never copied into a new Council workspace.</p></div><div className="import-panel"><Icon name="upload" size={26}/><strong>{imported ? 'File ready for review' : 'Drop a CSV file here'}</strong><span>{message || (imported ? 'The import review is ready to map fields and confirm changes.' : 'or choose a prepared spreadsheet')}</span><label className="secondary-button upload-button">Choose project CSV<input type="file" accept=".csv" onChange={handleFile}/></label></div><div className="import-actions"><a href="/civicpath-project-import-template.csv" download>Download project template <Icon name="external" size={14}/></a><a href="/civicpath-grant-import-template.csv" download>Download grant template <Icon name="external" size={14}/></a></div></section>
       <section className="settings-card integration-card"><div><p className="card-eyebrow">Optional connection</p><h3>GrantMaestro</h3><p className="card-copy">CivicPath operates independently. A future GrantMaestro connection will use a documented API boundary so Council information remains governed by the chosen product configuration.</p></div><span className="integration-status">Not connected</span></section>
       <SupportContactPanel />
+      </>}
     </div></section>
   </main>;
 }

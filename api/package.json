@@ -10,6 +10,7 @@
     "db:seed-demo": "node db/seeds/001_demo_workspace.mjs",
     "test": "node --test",
     "test:system-admin-mfa": "node tests/systemAdminMfaFlow.mjs",
+    "test:people-access": "node tests/peopleAccessFlow.mjs",
     "test:strategy-delivery": "node tests/strategyDeliveryFlow.mjs"
   },
   "keywords": [],

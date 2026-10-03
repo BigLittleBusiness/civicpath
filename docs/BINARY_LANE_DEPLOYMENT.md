@@ -55,3 +55,7 @@ The `db:seed-demo` command is for a dedicated development or demonstration tenan
 ## Strategy delivery workspace
 
 Migration `009_strategy_delivery_workspace.mjs` adds the tenant-scoped action register, focus areas, statuses, action/project links, milestones, dependencies, quarterly reporting periods and updates, measures, decisions, partners, risks, funding positions, evidence links, report snapshots and in-app alerts. The scheduled strategy-alert evaluation creates in-app accountability items only; it does **not** email council users. Configure any future escalation channel only after the council approves its notification policy. See `docs/STRATEGY_DELIVERY_WORKSPACE.md` for the operating model and CSV import contract.
+
+## Council People & Access
+
+Migration `012_council_people_access.mjs` adds the hashed, time-limited Council-user invitation table used by **Workspace settings → People & access**. It must run before deploying the corresponding frontend build. The migration runner processes it automatically in numeric order. Verify a Council administrator’s ability to invite, resend, reassign operational ownership and remove access in a non-production tenant before enabling SES delivery in production.

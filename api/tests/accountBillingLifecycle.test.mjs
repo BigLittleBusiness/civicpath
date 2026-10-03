@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { accountActivatedMessage, passwordResetMessage, refundRequestedMessage, registrationReceiptMessage } from '../src/services/accountNotifications.js';
+import { accountActivatedMessage, councilInvitationMessage, passwordResetMessage, refundRequestedMessage, registrationReceiptMessage } from '../src/services/accountNotifications.js';
 import { BillingConfigurationError, checkoutTaxParameters, invoicePaymentIntentId, priceIdForPlan, subscriptionPeriodEnd } from '../src/services/stripeBilling.js';
 
 function assertQuartermarkEmail(message) {
@@ -34,6 +34,15 @@ test('password reset and refund messages use the shared Quartermark email shell'
   assert.equal(refund.subject, 'CivicPath - Refund request received');
   assert.match(refund.text, /original payment method/);
   assertQuartermarkEmail(refund);
+});
+
+test('Council invitations use the shared Quartermark shell and a one-time access expectation', () => {
+  const invitation = councilInvitationMessage({ firstName: 'Taylor', organizationName: 'Example Council', role: 'portfolio_manager', invitationUrl: 'https://app.civicpath.com.au/accept-invitation?token=example' });
+  assert.equal(invitation.subject, 'CivicPath - You have been invited to a Council workspace');
+  assert.match(invitation.text, /one-time email link/i);
+  assert.match(invitation.text, /within 7 days/i);
+  assert.match(invitation.html, /Set password and join/);
+  assertQuartermarkEmail(invitation);
 });
 
 test('Stripe price selection permits only an approved mapped plan', () => {

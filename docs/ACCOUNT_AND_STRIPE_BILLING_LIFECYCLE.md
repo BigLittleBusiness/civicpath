@@ -28,6 +28,18 @@ This implementation enables a council to create a CivicPath workspace, choose a 
 6. CivicPath records the event idempotently, updates its subscription/invoice mirror, activates the administrator and sends a transactional activation receipt through AWS SES.
 7. The organisation administrator can use **Workspace settings → Open secure billing portal** for Stripe-managed payment details, invoices and permitted subscription actions.
 
+## Council People & Access
+
+Once the workspace is active, an **Organisation Administrator** can use **Workspace settings → People & access** to invite and manage their Council team without a Big Little Business staff member:
+
+- Invite Organisation Administrators, Portfolio Managers, Contributors and Executives, subject to the active plan’s workflow-user limit. Active and invited people consume a seat so an unaccepted invitation cannot bypass the plan limit.
+- Send a one-time, 7-day password-setup invitation. CivicPath stores only the SHA-256 hash of the token; resending replaces the outstanding token. The email uses the shared Quartermark transactional shell and delivery remains disabled until SES is configured.
+- Change a team member’s role, resend an invitation, or remove access. A change or removal invalidates that person’s existing session.
+- Preserve Council continuity: the final active Organisation Administrator cannot be demoted or removed, and a person cannot remove their own access. Keep at least two active Organisation Administrators in every live workspace.
+- Before removal, CivicPath reports assigned operational records and requires an active Council user to receive them. Project, grant, work-item, strategy, milestone, dependency, decision, stakeholder, risk/issue and alert ownership transfers in the same database transaction. Historical authorship and audit records remain intact.
+
+Every invitation, acceptance, role change, ownership handover and access removal is written to the Council audit trail. This is a Council-facing access control; it does not grant access to platform-only Customer 360, Stripe configuration or System Administrator controls.
+
 ## Password reset journey
 
 - `/forgot-password` uses ALTCHA and always returns the same neutral confirmation message.

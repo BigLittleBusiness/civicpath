@@ -58,6 +58,18 @@ export function refundRequestedMessage({ firstName, amountLabel, organisationNam
   return { subject, text, html };
 }
 
+export function councilInvitationMessage({ firstName, organizationName, role, invitationUrl }) {
+  const roleLabel = String(role || '').replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const subject = 'CivicPath - You have been invited to a Council workspace';
+  const text = `Hi ${firstName},\n\nYou have been invited to join ${organizationName} in CivicPath as ${roleLabel}. Set your password using this one-time email link within 7 days:\n${invitationUrl}\n\nIf you were not expecting this invitation, you can ignore this email.\n\nRegards,\nCivicPath`;
+  const html = brandedEmail({
+    heading: 'You have been invited to CivicPath',
+    preheader: 'Set your password to join your Council workspace.',
+    contentHtml: `<p style="margin:0 0 18px">Hi ${escapeEmailHtml(firstName)},</p><p style="margin:0 0 18px">You have been invited to join <strong>${escapeEmailHtml(organizationName)}</strong> in CivicPath as <strong>${escapeEmailHtml(roleLabel)}</strong>.</p>${emailButton({ href: invitationUrl, label: 'Set password and join' })}<p style="margin:0">For your security, this one-time invitation link expires in 7 days. If you were not expecting this invitation, you can ignore this email.</p>`,
+  });
+  return { subject, text, html };
+}
+
 export async function sendTransactionalEmail({ to, message }) {
   const config = await getPulseRoutingSettings({ includeSecrets: true });
   if (!config.emailEnabled || !config.awsCredentialsConfigured || !config.fromEmail) return { status: 'disabled' };

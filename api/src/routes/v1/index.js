@@ -15,6 +15,7 @@ import { publicPlans } from '../../controllers/accountLifecycleController.js';
 import { councilSubscriptionSummary, createCustomerPortal, startCouncilProofConversionCheckout } from '../../controllers/stripeBillingController.js';
 import { getSupportContactChallenge } from '../../controllers/supportContactController.js';
 import { submitSupportContactWithAttachments, uploadSupportAttachments } from '../../controllers/supportAttachmentController.js';
+import { disableWorkspaceMember, getWorkspaceMemberOwnership, inviteWorkspaceMember, listWorkspaceMembers, resendWorkspaceInvitation, updateWorkspaceMemberRole } from '../../controllers/peopleAccessController.js';
 import {
   commitStrategyImport,
   createDecision,
@@ -61,6 +62,12 @@ v1Router.get('/billing/subscription', councilSubscriptionSummary);
 v1Router.post('/billing/customer-portal', requireRoles('org_admin'), createCustomerPortal);
 v1Router.post('/billing/council-proof-conversion-checkout', requireRoles('org_admin'), startCouncilProofConversionCheckout);
 v1Router.use(requireActiveEntitlement);
+v1Router.get('/workspace/members', requireRoles('org_admin'), listWorkspaceMembers);
+v1Router.post('/workspace/members', requireRoles('org_admin'), inviteWorkspaceMember);
+v1Router.patch('/workspace/members/:userId/role', requireRoles('org_admin'), updateWorkspaceMemberRole);
+v1Router.get('/workspace/members/:userId/ownership', requireRoles('org_admin'), getWorkspaceMemberOwnership);
+v1Router.delete('/workspace/members/:userId', requireRoles('org_admin'), disableWorkspaceMember);
+v1Router.post('/workspace/members/:userId/resend-invitation', requireRoles('org_admin'), resendWorkspaceInvitation);
 v1Router.get('/dashboard/overview', overview);
 v1Router.get('/council-proof/selectors', listCouncilProofSelectors);
 v1Router.get('/priorities', listPriorities);
