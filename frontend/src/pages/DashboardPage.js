@@ -5,7 +5,9 @@ import { Link } from 'react-router-dom';
 import { actions, benefitData, fundingVelocity, portfolioProjects, readinessData, stageData } from '../lib/demoData';
 import { ChartCard } from '../components/ChartCard';
 import { Icon } from '../components/Icon';
+import { SetupChecklist } from '../components/WorkspaceSetupPanel';
 import { api } from '../lib/api';
+import { useAuth } from '../features/AuthContext';
 
 const money = (value) => value >= 1000000 ? `$${(value / 1000000).toFixed(1)}m` : `$${Math.round(value / 1000)}k`;
 
@@ -39,6 +41,7 @@ function toDashboardData(payload) {
 export default function DashboardPage() {
   const [remoteData, setRemoteData] = useState(null);
   const [source, setSource] = useState('loading');
+  const { user } = useAuth();
   useEffect(() => { let mounted = true; api.get('/dashboard/overview').then((response) => { if (mounted) { setRemoteData(response.data.data); setSource('live'); } }).catch(() => { if (mounted) setSource('sample'); }); return () => { mounted = false; }; }, []);
   const dashboard = useMemo(() => toDashboardData(remoteData), [remoteData]);
   const isLive = Boolean(dashboard);
@@ -56,6 +59,7 @@ export default function DashboardPage() {
   const dashboardFundingSeries = dashboard?.fundingSeries?.length ? dashboard.fundingSeries : fundingVelocity;
   return <main className="page-content dashboard-page">
     <div className="demo-banner"><span>{isLive ? 'Connected workspace' : source === 'loading' ? 'Loading workspace' : 'Demonstration workspace'}</span><p>{isLive ? 'Portfolio figures are drawn from this workspace. Demonstration records remain clearly marked until Council data is imported.' : 'All information shown is illustrative and can be replaced through data import or connection.'}</p><Link to="/settings">Workspace settings <Icon name="arrow" size={15}/></Link></div>
+    <SetupChecklist projectCount={dashboard?.projects?.length || 0} hasStrategy={Boolean(dashboard?.summary?.strategyCount)} isAdmin={user?.role === 'org_admin'} />
     <section className="metric-grid"><Metric label="Live portfolio value" value={money(liveValue)} detail={`${projects.length} priority projects`}/><Metric label="Funding sought" value={money(fundingTarget)} detail={`${dashboard?.pathways?.length || 4} active funding pathways`}/><Metric label="Funding secured" value={money(fundingSecured)} detail={`${fundingTarget ? Math.round((fundingSecured / fundingTarget) * 100) : 0}% of target portfolio`} signal="positive"/><Metric label="Average readiness" value={`${Math.round(averageReadiness)}%`} detail={`${fundingReadyCount} projects funding-ready`} signal="positive"/></section>
     <section className="dashboard-grid dashboard-grid-top"><ChartCard eyebrow="Portfolio signal" title="Funding position" action={<Link className="quiet-link" to="/funding">View pathways <Icon name="arrow" size={15}/></Link>}><div className="funding-summary"><div><span className="funding-dot sought"/><p>Funding sought</p><strong>{money(fundingTarget)}</strong></div><div><span className="funding-dot secured"/><p>Funding secured</p><strong>{money(fundingSecured)}</strong></div><div className="funding-gap"><p>Remaining pathway gap</p><strong>{money(fundingGap)}</strong><small>Across current project portfolio</small></div></div><div className="chart-box funding-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={dashboardFundingSeries} margin={{ top: 10, right: 10, left: -24, bottom: 0 }}><defs><linearGradient id="funding" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#0D6A55" stopOpacity={.33}/><stop offset="100%" stopColor="#0D6A55" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#D8E2DF" strokeDasharray="2 4" vertical={false}/><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#60716D', fontSize: 11 }}/><YAxis tickFormatter={(v) => `$${v}m`} axisLine={false} tickLine={false} tick={{ fill: '#60716D', fontSize: 11 }}/><Tooltip formatter={(v) => [`$${v}m`, 'Pathway value']} contentStyle={{ border: '1px solid #D8E2DF', borderRadius: 7 }}/><Area type="monotone" dataKey="value" stroke="#0D6A55" strokeWidth={2.5} fill="url(#funding)"/></AreaChart></ResponsiveContainer></div></ChartCard>
       <ChartCard eyebrow="Readiness mix" title="Where projects sit today" action={<Link className="quiet-link" to="/portfolio">Portfolio view <Icon name="arrow" size={15}/></Link>}><div className="donut-layout"><div className="donut-wrap"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={dashboardReadiness} dataKey="value" innerRadius={61} outerRadius={84} paddingAngle={3} stroke="none">{dashboardReadiness.map((item) => <Cell key={item.name} fill={item.color}/>)}</Pie><Tooltip/></PieChart></ResponsiveContainer><div className="donut-centre"><strong>{projects.length}</strong><span>projects</span></div></div><div className="chart-legend">{dashboardReadiness.map((item) => <p key={item.name}><i style={{ background: item.color }}/><span>{item.name}</span><b>{item.value}</b></p>)}</div></div></ChartCard></section>

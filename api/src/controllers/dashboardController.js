@@ -1,16 +1,17 @@
 import { Op, fn, col } from 'sequelize';
-import { CivicProject, FundingPathway, Grant, ReadinessAssessment, WorkItem } from '../models/index.js';
+import { CivicProject, FundingPathway, Grant, ReadinessAssessment, StrategicPlan, WorkItem } from '../models/index.js';
 
 export async function overview(req, res, next) {
   try {
     const where = { organizationId: req.tenant.organizationId };
     const today = new Date().toISOString().slice(0, 10);
-    const [projects, grants, pathways, workItems, readiness] = await Promise.all([
+    const [projects, grants, pathways, workItems, readiness, strategyCount] = await Promise.all([
       CivicProject.findAll({ where, attributes: ['id', 'name', 'stage', 'estimatedCost', 'targetFunding', 'securedFunding', 'expectedJobs', 'targetDate'], order: [['updatedAt', 'DESC']], limit: 8 }),
       Grant.findAll({ where, attributes: ['id', 'title', 'funder', 'requestedAmount', 'awardedAmount', 'status', 'dueDate', 'acquittalDueDate'], order: [['dueDate', 'ASC']], limit: 8 }),
       FundingPathway.findAll({ where, attributes: ['id', 'sourceName', 'fit', 'potentialAmount', 'status', 'dueDate'] }),
       WorkItem.findAll({ where: { ...where, status: { [Op.not]: 'complete' }, dueDate: { [Op.lte]: today } }, attributes: ['id', 'projectId', 'title', 'workType', 'priority', 'dueDate', 'status'], order: [['dueDate', 'ASC']], limit: 10 }),
       ReadinessAssessment.findAll({ where, attributes: ['projectId', 'score'] }),
+      StrategicPlan.count({ where }),
     ]);
     const projectRows = projects.map((project) => project.get({ plain: true }));
     const grantRows = grants.map((grant) => grant.get({ plain: true }));
@@ -28,7 +29,7 @@ export async function overview(req, res, next) {
       summary: {
         livePortfolioValue: total(projectRows, 'estimatedCost'), fundingTarget, securedFunding,
         fundingGap: Math.max(fundingTarget - securedFunding, 0), expectedJobs: total(projectRows, 'expectedJobs'),
-        averageReadiness: readiness.length ? Math.round((Object.values(readinessByProject).reduce((sum, score) => sum + score, 0) / readiness.length) * 10) / 10 : 0, fundingReadyCount: projectRows.filter((project) => project.stage === 'funding_ready').length,
+        averageReadiness: readiness.length ? Math.round((Object.values(readinessByProject).reduce((sum, score) => sum + score, 0) / readiness.length) * 10) / 10 : 0, fundingReadyCount: projectRows.filter((project) => project.stage === 'funding_ready').length, strategyCount,
       },
       stageMix,
     } });

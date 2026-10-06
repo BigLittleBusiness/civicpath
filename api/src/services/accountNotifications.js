@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { brandedEmail, emailButton, escapeEmailHtml } from './emailBranding.js';
 import { getPulseRoutingSettings } from './pulseNotifications.js';
+import { NotificationDelivery } from '../models/index.js';
 
 const MAX_ATTEMPTS = 3;
 const inboundMailbox = () => Buffer.from('aGVsbG9AYmlnbGl0dGxlYnVzaW5lc3MuY29t', 'base64').toString('utf8');
@@ -70,20 +71,27 @@ export function councilInvitationMessage({ firstName, organizationName, role, in
   return { subject, text, html };
 }
 
-export async function sendTransactionalEmail({ to, message }) {
+export async function sendTransactionalEmail({ to, message, organizationId = null, userId = null, category = 'transactional' }) {
   const config = await getPulseRoutingSettings({ includeSecrets: true });
-  if (!config.emailEnabled || !config.awsCredentialsConfigured || !config.fromEmail) return { status: 'disabled' };
-  try {
-    const response = await emailClient(config).send(new SendEmailCommand({
-      Source: sourceAddress(config),
-      ReplyToAddresses: config.replyToEmail ? [config.replyToEmail] : undefined,
-      Destination: { ToAddresses: [to] },
-      Message: { Subject: { Charset: 'UTF-8', Data: message.subject }, Body: { Text: { Charset: 'UTF-8', Data: message.text }, Html: { Charset: 'UTF-8', Data: message.html } } },
-    }));
-    return { status: 'sent', providerReference: response.MessageId || '' };
-  } catch (error) {
-    return { status: 'failed', error: String(error.message || error).slice(0, 1000) };
+  let outcome;
+  if (!config.emailEnabled || !config.awsCredentialsConfigured || !config.fromEmail) outcome = { status: 'disabled' };
+  else {
+    try {
+      const response = await emailClient(config).send(new SendEmailCommand({
+        Source: sourceAddress(config),
+        ReplyToAddresses: config.replyToEmail ? [config.replyToEmail] : undefined,
+        Destination: { ToAddresses: [to] },
+        Message: { Subject: { Charset: 'UTF-8', Data: message.subject }, Body: { Text: { Charset: 'UTF-8', Data: message.text }, Html: { Charset: 'UTF-8', Data: message.html } } },
+      }));
+      outcome = { status: 'sent', providerReference: response.MessageId || '' };
+    } catch (error) {
+      outcome = { status: 'failed', error: String(error.message || error).slice(0, 1000) };
+    }
   }
+  try {
+    await NotificationDelivery.create({ organizationId, userId, category, recipientHash: hashToken(String(to).trim().toLowerCase()), subject: message.subject, status: outcome.status, providerReference: outcome.providerReference || null, error: outcome.error || null, retryGuidance: outcome.status === 'sent' ? 'Delivered to the configured provider. Delivery beyond the provider is not guaranteed.' : outcome.status === 'disabled' ? 'Configure SES routing before sending a fresh message.' : 'Generate a fresh message only after the delivery configuration or recipient issue is resolved.' });
+  } catch (recordError) { console.error('[civicpath] notification delivery record failed', recordError); }
+  return outcome;
 }
 
 export async function notifyBillingOperations(message) {

@@ -59,3 +59,7 @@ Migration `009_strategy_delivery_workspace.mjs` adds the tenant-scoped action re
 ## Council People & Access
 
 Migration `012_council_people_access.mjs` adds the hashed, time-limited Council-user invitation table used by **Workspace settings → People & access**. It must run before deploying the corresponding frontend build. The migration runner processes it automatically in numeric order. Verify a Council administrator’s ability to invite, resend, reassign operational ownership and remove access in a non-production tenant before enabling SES delivery in production.
+
+## Self-service operations and support targets
+
+Migration `013_self_service_operations.mjs` is additive-only: it adds Workspace Profile fields, support first-response timestamps and the operational email-delivery outcome table. It does not alter or remove existing Council records. After deployment, verify workspace-profile saving, project/grant CSV preview and confirmation, protected public-contact confirmation and the System Admin **Message delivery** monitor in a non-production tenant. Configure SES before expecting an email to move beyond `disabled`; do not treat a provider `sent` result as a guarantee of inbox delivery.

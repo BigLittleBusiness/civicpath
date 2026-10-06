@@ -17,7 +17,7 @@ export async function previewImport(req, res, next) {
     const required = value.entityType === 'projects' ? ['name'] : ['title', 'funder'];
     const missing = required.filter((header) => !headers.includes(header));
     if (missing.length) return res.status(422).json({ error: `Missing required column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}` });
-    return res.json({ data: { entityType: value.entityType, headers, rowCount: rows.length, preview: rows.slice(0, 8) } });
+    return res.json({ data: { entityType: value.entityType, headers, rowCount: rows.length, preview: rows.slice(0, 8), rows } });
   } catch (error) { return next(error); }
 }
 
@@ -45,4 +45,3 @@ export async function commitImport(req, res, next) {
     return res.status(201).json({ data: { created, skipped, note: 'Imported records are stored only in the active organisation. The demonstration workspace is never copied into a customer organisation.' } });
   } catch (error) { return next(error); }
 }
-

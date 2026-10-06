@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { Provider } from 'react-redux';
 import { HelmetProvider } from 'react-helmet-async';
 import './index.css';
+import './ux-improvements.css';
 import App from './App';
 import { store } from './store';
 

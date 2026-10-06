@@ -13,6 +13,11 @@ export const Organization = sequelize.define('Organization', {
   isDemo: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   status: { type: DataTypes.ENUM('trial', 'active', 'suspended'), allowNull: false, defaultValue: 'trial' },
   defaultCurrency: { type: DataTypes.CHAR(3), allowNull: false, defaultValue: 'AUD', validate: { isIn: [['AUD', 'NZD']] } },
+  operatingContactName: { type: DataTypes.STRING(160), allowNull: true },
+  operatingContactRole: { type: DataTypes.STRING(160), allowNull: true },
+  operatingContactEmail: { type: DataTypes.STRING(191), allowNull: true, validate: { isEmail: true } },
+  workspaceOwnerId: { type: DataTypes.UUID, allowNull: true },
+  onboardingCompleteAt: { type: DataTypes.DATE, allowNull: true },
 }, standard);
 
 export const User = sequelize.define('User', {
@@ -130,6 +135,20 @@ export const PasswordResetToken = sequelize.define('PasswordResetToken', {
   requestedIpHash: { type: DataTypes.STRING(128), allowNull: true },
 }, { timestamps: true, updatedAt: false, underscored: true, paranoid: false, indexes: [{ name: 'prt_user_expiry', fields: ['user_id', 'expires_at', 'consumed_at'] }] });
 
+// Outcome-only delivery records expose operational state without storing email content or security links.
+export const NotificationDelivery = sequelize.define('NotificationDelivery', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: true },
+  userId: { type: DataTypes.UUID, allowNull: true },
+  category: { type: DataTypes.STRING(80), allowNull: false },
+  recipientHash: { type: DataTypes.STRING(64), allowNull: false },
+  subject: { type: DataTypes.STRING(240), allowNull: false },
+  status: { type: DataTypes.ENUM('disabled', 'sent', 'failed'), allowNull: false },
+  providerReference: { type: DataTypes.STRING(255), allowNull: true },
+  error: { type: DataTypes.STRING(1000), allowNull: true },
+  retryGuidance: { type: DataTypes.STRING(300), allowNull: false },
+}, { timestamps: true, updatedAt: false, underscored: true, paranoid: false, indexes: [{ name: 'nd_org_created', fields: ['organization_id', 'created_at'] }, { name: 'nd_status_created', fields: ['status', 'created_at'] }] });
+
 // One-time, hashed invitation records. The raw token is never persisted or returned after the invitation is created.
 export const CouncilInvitation = sequelize.define('CouncilInvitation', {
   id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
@@ -171,6 +190,9 @@ export const SupportCase = sequelize.define('SupportCase', {
   status: { type: DataTypes.ENUM('new', 'in_progress', 'waiting_customer', 'resolved', 'closed'), allowNull: false, defaultValue: 'new' },
   summary: { type: DataTypes.TEXT, allowNull: true },
   ownerId: { type: DataTypes.UUID, allowNull: true },
+  firstResponseDueAt: { type: DataTypes.DATE, allowNull: true },
+  firstRespondedAt: { type: DataTypes.DATE, allowNull: true },
+  lastCustomerUpdateAt: { type: DataTypes.DATE, allowNull: true },
   resolvedAt: { type: DataTypes.DATE, allowNull: true },
 }, standard);
 
@@ -820,6 +842,10 @@ Organization.hasMany(BillingEvent, { foreignKey: 'organizationId' });
 BillingEvent.belongsTo(Organization, { foreignKey: 'organizationId' });
 User.hasMany(PasswordResetToken, { foreignKey: 'userId' });
 PasswordResetToken.belongsTo(User, { foreignKey: 'userId' });
+Organization.hasMany(NotificationDelivery, { foreignKey: 'organizationId' });
+NotificationDelivery.belongsTo(Organization, { foreignKey: 'organizationId' });
+User.hasMany(NotificationDelivery, { foreignKey: 'userId' });
+NotificationDelivery.belongsTo(User, { foreignKey: 'userId' });
 Organization.hasMany(CouncilInvitation, { foreignKey: 'organizationId' });
 CouncilInvitation.belongsTo(Organization, { foreignKey: 'organizationId' });
 User.hasMany(CouncilInvitation, { foreignKey: 'userId' });

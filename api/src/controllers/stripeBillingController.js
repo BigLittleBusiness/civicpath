@@ -79,7 +79,7 @@ async function activateVerifiedPurchase({ organization, subscription, plan, stri
   await AuditLog.create({ organizationId: organization.id, userId: null, entityType: 'billing', entityId: subscription.id, action: 'stripe_payment_verified_access_activated', metadata: { stripeEventId: eventId, planCode: plan?.code || organization.planCode, stripeSubscriptionId: stripeSubscription?.id || null } });
   if (wasInactive && invitedUsers.length) {
     const primary = invitedUsers[0];
-    await sendTransactionalEmail({ to: primary.email, message: accountActivatedMessage({ firstName: primary.firstName, organisationName: organization.name, planName: plan?.name || 'CivicPath', signInUrl: new URL('/login', env.frontendUrl).toString() }) });
+    await sendTransactionalEmail({ to: primary.email, organizationId: organization.id, userId: primary.id, category: 'account_activated', message: accountActivatedMessage({ firstName: primary.firstName, organisationName: organization.name, planName: plan?.name || 'CivicPath', signInUrl: new URL('/login', env.frontendUrl).toString() }) });
   }
   return subscription;
 }
@@ -335,7 +335,7 @@ export async function refundCustomerInvoice(req, res, next) {
     const local = await BillingRefund.create({ organizationId: customer.id, invoiceId: invoice.id, requestedBy: req.auth.sub, stripeRefundId: refund.id, stripePaymentIntentId: invoice.stripePaymentIntentId, amount: requestedAmount, currency: invoice.currency, status: refund.status, reason: refund.reason || value.reason, adminNote: value.adminNote, providerReference: refund.id });
     await platformAudit(req, customer.id, 'stripe_refund_requested', { invoiceId: invoice.id, stripeRefundId: refund.id, amount: requestedAmount, currency: invoice.currency, reason: value.reason, adminNote: value.adminNote });
     const primary = await User.findOne({ where: { organizationId: customer.id, role: 'org_admin', status: 'active' }, order: [['createdAt', 'ASC']] });
-    if (primary) await sendTransactionalEmail({ to: primary.email, message: refundRequestedMessage({ firstName: primary.firstName, amountLabel: money(requestedAmount, invoice.currency), organisationName: customer.name }) });
+    if (primary) await sendTransactionalEmail({ to: primary.email, organizationId: customer.id, userId: primary.id, category: 'refund_requested', message: refundRequestedMessage({ firstName: primary.firstName, amountLabel: money(requestedAmount, invoice.currency), organisationName: customer.name }) });
     return res.status(201).json({ data: local });
   } catch (error) { return next(error); }
 }

@@ -113,7 +113,7 @@ export async function registerAndStartCheckout(req, res, next) {
       });
       await registration.subscription.update({ billingReference: session.subscription || session.id, entitlements: { pendingReason: 'Awaiting verified Stripe payment', stripeCheckoutSessionId: session.id } });
       await auditRegistration({ organizationId: registration.organization.id, userId: registration.user.id, action: 'stripe_checkout_created', req, metadata: { checkoutSessionId: session.id, planCode: plan.code, mode: session.mode } });
-      await sendTransactionalEmail({ to: registration.user.email, message: registrationReceiptMessage({ firstName: registration.user.firstName, organisationName: registration.organization.name, planName: plan.name, checkoutUrl: session.url }) });
+      await sendTransactionalEmail({ to: registration.user.email, organizationId: registration.organization.id, userId: registration.user.id, category: 'registration_checkout', message: registrationReceiptMessage({ firstName: registration.user.firstName, organisationName: registration.organization.name, planName: plan.name, checkoutUrl: session.url }) });
       return res.status(201).json({ data: { checkoutUrl: session.url, registrationId: registration.organization.id } });
     } catch (stripeError) {
       await auditRegistration({ organizationId: registration.organization.id, userId: registration.user.id, action: 'stripe_checkout_creation_failed', req, metadata: { message: String(stripeError.message || stripeError).slice(0, 300) } });
@@ -140,9 +140,9 @@ export async function requestPasswordReset(req, res, next) {
       const token = createSecureToken();
       await PasswordResetToken.create({ userId: user.id, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 60 * 60 * 1000), requestedIpHash: fingerprint(req, req.ip) }, { transaction });
       await auditRegistration({ organizationId: user.organizationId, userId: user.id, action: 'password_reset_requested', req });
-      return { email: user.email, message: passwordResetMessage({ firstName: user.firstName, resetUrl: `${appUrl('/reset-password')}?token=${encodeURIComponent(token)}` }) };
+      return { email: user.email, organizationId: user.organizationId, userId: user.id, message: passwordResetMessage({ firstName: user.firstName, resetUrl: `${appUrl('/reset-password')}?token=${encodeURIComponent(token)}` }) };
     });
-    if (resetDelivery) await sendTransactionalEmail({ to: resetDelivery.email, message: resetDelivery.message });
+    if (resetDelivery) await sendTransactionalEmail({ to: resetDelivery.email, organizationId: resetDelivery.organizationId, userId: resetDelivery.userId, category: 'password_reset', message: resetDelivery.message });
     return res.status(202).json({ data: { received: true } });
   } catch (error) { return next(error); }
 }

@@ -5,7 +5,7 @@ import { deriveKey } from 'altcha-lib/algorithms/pbkdf2';
 import { sequelize } from '../src/config/database.js';
 import { PublicFormChallenge } from '../src/models/index.js';
 import { consumeAltchaPayload, issueAltchaChallenge } from '../src/services/altchaProtection.js';
-import { contactEmailMessage, councilProofConfirmationMessage } from '../src/services/contactNotifications.js';
+import { contactEmailMessage, councilProofConfirmationMessage, publicEnquiryConfirmationMessage } from '../src/services/contactNotifications.js';
 import { internalEmail, resultEmail } from '../src/services/pulseNotifications.js';
 
 function encodedPayload(challenge, solution) {
@@ -47,6 +47,14 @@ test('Council Proof confirmation states the full $495 conversion-credit policy',
   assert.match(message.text, /within 30 days of the final Council Proof review/);
   assert.match(message.html, /\$495 conversion credit/);
   assert.match(message.text, /does not create an invoice, payment obligation or subscription/);
+  assertQuartermarkEmail(message);
+});
+
+test('every non-Proof public enquiry receives a branded confirmation message', () => {
+  const message = publicEnquiryConfirmationMessage({ firstName: 'Taylor', enquiryType: 'sales' });
+  assert.equal(message.subject, 'CivicPath - Your sales enquiry');
+  assert.match(message.text, /has been received and is now in the appropriate follow-up queue/);
+  assert.match(message.text, /do not reply with passwords, access codes or payment details/);
   assertQuartermarkEmail(message);
 });
 

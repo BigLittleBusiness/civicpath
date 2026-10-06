@@ -11,3 +11,9 @@ export async function previewCsvImport(entityType, file) {
   const response = await api.post('/imports/preview', { entityType, csv });
   return { ...response.data.data, csv };
 }
+
+export async function importCsv(entityType, file) {
+  const csv = await file.text();
+  const response = await api.post('/imports/preview', { entityType, csv });
+  return { ...response.data.data, csv };
+}

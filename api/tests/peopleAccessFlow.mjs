@@ -63,6 +63,10 @@ try {
   const initial = await request('/workspace/members', { headers });
   assert.equal(initial.members.length, 1, 'Test workspace should begin with one administrator.');
   assert.equal(initial.seats.workflowSeatsAvailable, 1, 'The test plan should leave one available seat.');
+  const profile = await request('/workspace/profile', { headers });
+  assert.equal(profile.profile.name, organization.name, 'Organisation administrators can read the workspace profile.');
+  const updatedProfile = await request('/workspace/profile', { method: 'PATCH', headers, body: JSON.stringify({ name: `${organization.name} Updated`, operatingContactName: 'Admin Tester', operatingContactRole: 'Economic Development', operatingContactEmail: administrator.email, workspaceOwnerId: administrator.id }) });
+  assert.equal(updatedProfile.name, `${organization.name} Updated`, 'Organisation administrators can complete their workspace profile without platform support.');
   await requestFailure(`/workspace/members/${administrator.id}`, 422, { method: 'DELETE', headers, body: JSON.stringify({ reason: 'Must not remove final administrator.' }) });
 
   const invitation = await request('/workspace/members', { method: 'POST', headers, body: JSON.stringify({ firstName: 'Alex', lastName: 'Council', email, role: 'contributor' }) });

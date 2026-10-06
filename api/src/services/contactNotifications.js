@@ -58,6 +58,20 @@ export function councilProofConfirmationMessage(enquiry) {
   return { subject, text, html };
 }
 
+
+export function publicEnquiryConfirmationMessage(enquiry) {
+  const firstName = enquiry.firstName || 'there';
+  const title = titleFor(enquiry.enquiryType, enquiry.category);
+  const subject = `CivicPath - Your ${title.toLowerCase()}`;
+  const text = `Hi ${firstName},\n\nThank you for contacting CivicPath. Your ${title.toLowerCase()} has been received and is now in the appropriate follow-up queue. We will respond through the details you provided.\n\nFor security, do not reply with passwords, access codes or payment details.\n\nRegards,\nCivicPath`;
+  const html = brandedEmail({
+    heading: 'Your enquiry is received',
+    preheader: 'CivicPath has received your enquiry.',
+    contentHtml: `<p style="margin:0 0 18px">Hi ${escapeEmailHtml(firstName)},</p><p style="margin:0 0 18px">Thank you for contacting CivicPath. Your <strong>${escapeEmailHtml(title.toLowerCase())}</strong> has been received and is now in the appropriate follow-up queue.</p>${emailCallout({ title: 'What happens next', contentHtml: '<p style="margin:0">We will respond through the details you provided. For security, do not send passwords, access codes or payment details.</p>' })}`,
+  });
+  return { subject, text, html };
+}
+
 async function sendEmail({ to, message, config }) {
   const response = await emailClient(config).send(new SendEmailCommand({
     Source: sourceAddress(config),
@@ -79,11 +93,12 @@ export async function deliverContactEmail(message) {
   }
 }
 
-async function deliverCouncilProofConfirmation(enquiry) {
+async function deliverPublicConfirmation(enquiry) {
   const config = await getPulseRoutingSettings({ includeSecrets: true });
   if (!config.emailEnabled || !config.awsCredentialsConfigured || !config.fromEmail) return { status: 'disabled' };
   try {
-    const providerReference = await sendEmail({ to: enquiry.email, message: councilProofConfirmationMessage(enquiry), config });
+    const message = enquiry.enquiryType === 'council_proof' ? councilProofConfirmationMessage(enquiry) : publicEnquiryConfirmationMessage(enquiry);
+    const providerReference = await sendEmail({ to: enquiry.email, message, config });
     return { status: 'sent', providerReference };
   } catch (error) {
     return { status: 'failed', error: String(error.message || error).slice(0, 1000) };
@@ -104,9 +119,9 @@ async function dispatchInternalContactNotification(enquiry) {
   return enquiry;
 }
 
-async function dispatchCouncilProofConfirmation(enquiry) {
-  if (enquiry.enquiryType !== 'council_proof' || enquiry.confirmationStatus !== 'pending') return enquiry;
-  const delivery = await deliverCouncilProofConfirmation(enquiry);
+async function dispatchPublicConfirmation(enquiry) {
+  if (enquiry.confirmationStatus !== 'pending') return enquiry;
+  const delivery = await deliverPublicConfirmation(enquiry);
   if (delivery.status === 'disabled') {
     await enquiry.update({ confirmationStatus: 'disabled', confirmationError: 'Transactional email is not configured.' });
   } else if (delivery.status === 'sent') {
@@ -120,7 +135,7 @@ async function dispatchCouncilProofConfirmation(enquiry) {
 
 export async function dispatchContactNotification(enquiry) {
   await dispatchInternalContactNotification(enquiry);
-  await dispatchCouncilProofConfirmation(enquiry);
+  await dispatchPublicConfirmation(enquiry);
   return enquiry;
 }
 

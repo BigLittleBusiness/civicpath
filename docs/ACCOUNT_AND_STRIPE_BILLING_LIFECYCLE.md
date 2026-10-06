@@ -40,6 +40,8 @@ Once the workspace is active, an **Organisation Administrator** can use **Worksp
 
 Every invitation, acceptance, role change, ownership handover and access removal is written to the Council audit trail. This is a Council-facing access control; it does not grant access to platform-only Customer 360, Stripe configuration or System Administrator controls.
 
+Organisation Administrators can also maintain the Council Workspace Profile: accountable operating contact, role, email and active workspace owner. Project and grant registers are uploaded through a template-led preview and explicit tenant-scoped confirmation. These controls support self-service setup only; they do not create a GrantMaestro connection or expose another Council’s records.
+
 ## Password reset journey
 
 - `/forgot-password` uses ALTCHA and always returns the same neutral confirmation message.

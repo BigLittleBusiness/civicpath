@@ -4,6 +4,7 @@ import { AuditLog, Organization, SupportAttachment, SupportCase, User } from '..
 import { consumeAltchaPayload } from '../services/altchaProtection.js';
 import { contactEmailMessage, deliverContactEmail } from '../services/contactNotifications.js';
 import { readSupportAttachment, removeSupportAttachment, storeSupportAttachment, SupportAttachmentError, supportAttachmentLimits, validateSupportAttachments } from '../services/supportAttachmentStorage.js';
+import { firstResponseDueAt, initialPriorityForCategory, supportCaseTiming } from '../services/supportTriage.js';
 import Joi from 'joi';
 import { sequelize } from '../config/database.js';
 
@@ -36,7 +37,8 @@ export async function submitSupportContactWithAttachments(req, res, next) {
       await consumeAltchaPayload({ encodedPayload: value.altcha, purpose: 'support_enquiry', transaction });
       const [user, organization] = await Promise.all([User.findByPk(req.auth.sub, { transaction }), Organization.findByPk(req.tenant.organizationId, { transaction })]);
       if (!user || !organization) throw new Error('The signed-in support context is unavailable.');
-      const caseRecord = await SupportCase.create({ organizationId: organization.id, requesterId: user.id, title: value.subject, category: value.category, priority: 'normal', summary: value.message }, { transaction });
+      const priority = initialPriorityForCategory(value.category);
+      const caseRecord = await SupportCase.create({ organizationId: organization.id, requesterId: user.id, title: value.subject, category: value.category, priority, summary: value.message, firstResponseDueAt: firstResponseDueAt(priority) }, { transaction });
       const attachments = [];
       for (const file of req.files || []) {
         const attachmentId = crypto.randomUUID();
@@ -54,7 +56,7 @@ export async function submitSupportContactWithAttachments(req, res, next) {
       const delivery = await deliverContactEmail(message);
       await AuditLog.create({ organizationId: result.organization.id, userId: result.user.id, entityType: 'support_case', entityId: result.caseRecord.id, action: 'support_enquiry_delivery_attempted', metadata: { status: delivery.status }, ipAddress: req.ip });
     } catch (dispatchError) { console.error('[civicpath] support enquiry notification dispatch failed', dispatchError); }
-    return res.status(201).json({ data: { id: result.caseRecord.id, message: message.subject, attachments: result.attachments.map(attachmentMetadata) } });
+    return res.status(201).json({ data: { id: result.caseRecord.id, message: message.subject, priority: result.caseRecord.priority, timing: supportCaseTiming(result.caseRecord), attachments: result.attachments.map(attachmentMetadata) } });
   } catch (error) {
     await Promise.all(storedAttachments.map((stored) => removeSupportAttachment(stored))).catch(() => null);
     return next(error);

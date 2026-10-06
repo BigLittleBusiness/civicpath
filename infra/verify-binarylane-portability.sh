@@ -15,7 +15,8 @@ for required in \
   api/db/migrations/009_strategy_delivery_workspace.mjs \
   api/db/migrations/010_stripe_account_billing_lifecycle.mjs \
   api/db/migrations/011_billing_invoice_tax_amounts.mjs \
-  api/db/migrations/012_council_people_access.mjs; do
+  api/db/migrations/012_council_people_access.mjs \
+  api/db/migrations/013_self_service_operations.mjs; do
   [ -f "$required" ] || { printf 'Missing Binary Lane deployment file: %s\n' "$required" >&2; exit 1; }
 done
 

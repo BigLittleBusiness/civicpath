@@ -195,7 +195,7 @@ export async function inviteWorkspaceMember(req, res, next) {
       return { member, invitation, token, organizationName: organization?.name || 'CivicPath' };
     });
     if (result.error) return res.status(result.status).json({ error: result.error });
-    const delivery = await sendTransactionalEmail({ to: result.member.email, message: councilInvitationMessage({ firstName: result.member.firstName, organizationName: result.organizationName, role: result.member.role, invitationUrl: invitationUrl(result.token) }) });
+    const delivery = await sendTransactionalEmail({ to: result.member.email, organizationId, userId: result.member.id, category: 'workspace_invitation', message: councilInvitationMessage({ firstName: result.member.firstName, organizationName: result.organizationName, role: result.member.role, invitationUrl: invitationUrl(result.token) }) });
     return res.status(201).json({ data: { member: memberView(result.member, result.invitation, req.auth.sub), delivery: { status: delivery.status } } });
   } catch (error) { return next(error); }
 }
@@ -270,7 +270,7 @@ export async function resendWorkspaceInvitation(req, res, next) {
       return { member, invitation, token, organizationName: organization?.name || 'CivicPath' };
     });
     if (result.error) return res.status(result.status).json({ error: result.error });
-    const delivery = await sendTransactionalEmail({ to: result.member.email, message: councilInvitationMessage({ firstName: result.member.firstName, organizationName: result.organizationName, role: result.member.role, invitationUrl: invitationUrl(result.token) }) });
+    const delivery = await sendTransactionalEmail({ to: result.member.email, organizationId, userId: result.member.id, category: 'workspace_invitation_resend', message: councilInvitationMessage({ firstName: result.member.firstName, organizationName: result.organizationName, role: result.member.role, invitationUrl: invitationUrl(result.token) }) });
     return res.json({ data: { member: memberView(result.member, result.invitation, req.auth.sub), delivery: { status: delivery.status } } });
   } catch (error) { return next(error); }
 }
