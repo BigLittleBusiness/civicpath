@@ -18,6 +18,32 @@ import { submitSupportContactWithAttachments, uploadSupportAttachments } from '.
 import { disableWorkspaceMember, getWorkspaceMemberOwnership, inviteWorkspaceMember, listWorkspaceMembers, resendWorkspaceInvitation, updateWorkspaceMemberRole } from '../../controllers/peopleAccessController.js';
 import { getWorkspaceProfile, updateWorkspaceProfile } from '../../controllers/workspaceController.js';
 import {
+  addActionParticipant,
+  createActionRequest,
+  createActionThread,
+  createDecisionPack,
+  createDependencyHandover,
+  createEngagementPlan,
+  createFundingCheckpoint,
+  createFundingRoom,
+  createPartnerCommitment,
+  createReviewPack,
+  createReviewPackOutcome,
+  createReviewPackQuestion,
+  createThreadComment,
+  createWatch,
+  getActionCollaboration,
+  getDecisionPack,
+  getMyCollaborationWork,
+  getReviewPack,
+  listReviewPacks,
+  markNotificationRead,
+  removeWatch,
+  respondDependencyHandover,
+  updateCollaborationRequest,
+  updateQuarterlyWorkflow,
+} from '../../controllers/collaborationController.js';
+import {
   commitStrategyImport,
   createDecision,
   createDependency,
@@ -94,6 +120,10 @@ v1Router.get('/evidence', listEvidence);
 v1Router.post('/evidence', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createEvidence);
 v1Router.post('/imports/preview', requireRoles('org_admin', 'portfolio_manager'), previewImport);
 v1Router.post('/imports/commit', requireRoles('org_admin', 'portfolio_manager'), commitImport);
+v1Router.get('/collaboration/my-work', getMyCollaborationWork);
+v1Router.post('/collaboration/watches', createWatch);
+v1Router.delete('/collaboration/watches/:watchId', removeWatch);
+v1Router.patch('/collaboration/notifications/:notificationId/read', markNotificationRead);
 v1Router.get('/strategy-workspace', listStrategyWorkspace);
 v1Router.post('/strategies', requireRoles('org_admin', 'portfolio_manager'), createStrategy);
 v1Router.patch('/strategies/:strategyId', requireRoles('org_admin', 'portfolio_manager'), updateStrategy);
@@ -109,6 +139,13 @@ v1Router.post('/strategies/:strategyId/imports/actions/preview', requireRoles('o
 v1Router.post('/strategies/:strategyId/imports/actions/commit', requireRoles('org_admin', 'portfolio_manager'), commitStrategyImport);
 v1Router.get('/strategy-actions/:actionId', getStrategyAction);
 v1Router.patch('/strategy-actions/:actionId', requireRoles('org_admin', 'portfolio_manager', 'contributor'), updateStrategyAction);
+v1Router.get('/strategy-actions/:actionId/collaboration', getActionCollaboration);
+v1Router.post('/strategy-actions/:actionId/participants', requireRoles('org_admin', 'portfolio_manager', 'contributor'), addActionParticipant);
+v1Router.post('/strategy-actions/:actionId/threads', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createActionThread);
+v1Router.post('/strategy-actions/:actionId/requests', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createActionRequest);
+v1Router.post('/strategy-actions/:actionId/partner-commitments', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createPartnerCommitment);
+v1Router.post('/strategy-actions/:actionId/funding-rooms', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createFundingRoom);
+v1Router.post('/strategy-actions/:actionId/engagement-plans', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createEngagementPlan);
 v1Router.post('/strategy-actions/:actionId/projects', requireRoles('org_admin', 'portfolio_manager', 'contributor'), linkActionProject);
 v1Router.delete('/strategy-actions/:actionId/projects/:projectId', requireRoles('org_admin', 'portfolio_manager', 'contributor'), unlinkActionProject);
 v1Router.post('/strategy-actions/:actionId/milestones', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createMilestone);
@@ -121,5 +158,18 @@ v1Router.patch('/strategy-reporting-periods/:periodId', requireRoles('org_admin'
 v1Router.post('/strategy-reporting-periods/:periodId/action-updates', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createQuarterlyUpdate);
 v1Router.get('/strategy-reporting-periods/:periodId/report', getQuarterlyReport);
 v1Router.post('/strategy-reporting-periods/:periodId/report-snapshots', requireRoles('org_admin', 'portfolio_manager'), createReportSnapshot);
+v1Router.post('/collaboration/threads/:threadId/comments', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createThreadComment);
+v1Router.patch('/collaboration/requests/:requestId', updateCollaborationRequest);
+v1Router.post('/strategy-dependencies/:dependencyId/handover', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createDependencyHandover);
+v1Router.patch('/strategy-dependencies/:dependencyId/handover', respondDependencyHandover);
+v1Router.patch('/quarterly-action-updates/:updateId/workflow', updateQuarterlyWorkflow);
+v1Router.post('/funding-collaboration-rooms/:roomId/checkpoints', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createFundingCheckpoint);
+v1Router.post('/decision-packs', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createDecisionPack);
+v1Router.get('/decision-packs/:packId', getDecisionPack);
+v1Router.post('/review-packs', requireRoles('org_admin', 'portfolio_manager'), createReviewPack);
+v1Router.get('/review-packs', listReviewPacks);
+v1Router.get('/review-packs/:reviewPackId', getReviewPack);
+v1Router.post('/review-packs/:reviewPackId/questions', createReviewPackQuestion);
+v1Router.post('/review-packs/:reviewPackId/outcomes', requireRoles('org_admin', 'portfolio_manager'), createReviewPackOutcome);
 v1Router.patch('/strategy-alerts/:alertId', requireRoles('org_admin', 'portfolio_manager'), updateAlert);
 v1Router.post('/demo/reset', requireRoles('org_admin'), resetDemo);

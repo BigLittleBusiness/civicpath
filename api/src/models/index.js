@@ -528,6 +528,12 @@ export const ActionDependency = sequelize.define('ActionDependency', {
   workaround: { type: DataTypes.TEXT, allowNull: true },
   resolutionEvidence: { type: DataTypes.TEXT, allowNull: true },
   resolutionNote: { type: DataTypes.TEXT, allowNull: true },
+  handoverRequestedBy: { type: DataTypes.UUID, allowNull: true },
+  handoverRequestedTo: { type: DataTypes.UUID, allowNull: true },
+  handoverStatus: { type: DataTypes.ENUM('not_requested', 'requested', 'accepted', 'clarification_requested', 'revised_date_proposed', 'declined'), allowNull: false, defaultValue: 'not_requested' },
+  handoverResponse: { type: DataTypes.TEXT, allowNull: true },
+  proposedDueDate: { type: DataTypes.DATEONLY, allowNull: true },
+  raci: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
 }, { ...standard, indexes: [{ name: 'uq_ad_edge', unique: true, fields: ['dependent_type', 'dependent_id', 'predecessor_type', 'predecessor_id'] }, { name: 'idx_ad_org_strategy_status_sev', fields: ['organization_id', 'strategy_id', 'status', 'severity'] }, { name: 'idx_ad_org_owner_due', fields: ['organization_id', 'owner_id', 'due_date'] }] });
 
 export const QuarterlyReportingPeriod = sequelize.define('QuarterlyReportingPeriod', {
@@ -561,6 +567,12 @@ export const QuarterlyActionUpdate = sequelize.define('QuarterlyActionUpdate', {
   nextQuarterCommitments: { type: DataTypes.TEXT, allowNull: true },
   submittedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   version: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
+  workflowStatus: { type: DataTypes.ENUM('draft', 'submitted_for_review', 'changes_requested', 'endorsed', 'included_in_report'), allowNull: false, defaultValue: 'draft' },
+  reviewRequestedFromUserId: { type: DataTypes.UUID, allowNull: true },
+  reviewedBy: { type: DataTypes.UUID, allowNull: true },
+  reviewedAt: { type: DataTypes.DATE, allowNull: true },
+  reviewComment: { type: DataTypes.TEXT, allowNull: true },
+  includedInReportAt: { type: DataTypes.DATE, allowNull: true },
 }, { ...standard, indexes: [{ name: 'uq_qau_action_period', unique: true, fields: ['action_id', 'reporting_period_id'] }, { name: 'idx_qau_org_period_status', fields: ['organization_id', 'reporting_period_id', 'status'] }] });
 
 export const StrategyMeasure = sequelize.define('StrategyMeasure', {
@@ -689,6 +701,220 @@ export const StrategyAlert = sequelize.define('StrategyAlert', {
   lastDetectedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   resolvedAt: { type: DataTypes.DATE, allowNull: true },
 }, { ...standard, indexes: [{ name: 'idx_sal_org_strategy_status_sev', fields: ['organization_id', 'strategy_id', 'status', 'severity'] }, { name: 'idx_sal_org_owner_due', fields: ['organization_id', 'owner_id', 'due_date'] }] });
+
+// Collaboration records remain internal to a Council tenant. They provide a governed
+// working layer around delivery records without creating an external partner portal.
+export const CollaborationParticipant = sequelize.define('CollaborationParticipant', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  resourceType: { type: DataTypes.ENUM('action', 'project', 'decision', 'dependency', 'funding_room', 'review_pack', 'quarterly_update'), allowNull: false },
+  resourceId: { type: DataTypes.UUID, allowNull: false },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  role: { type: DataTypes.ENUM('accountable', 'contributor', 'reviewer', 'approver', 'informed', 'responsible', 'consulted'), allowNull: false, defaultValue: 'contributor' },
+  addedBy: { type: DataTypes.UUID, allowNull: true },
+}, { ...standard, indexes: [{ name: 'uq_collab_participant_role', unique: true, fields: ['resource_type', 'resource_id', 'user_id', 'role'] }, { name: 'idx_collab_participant_user', fields: ['organization_id', 'user_id', 'resource_type'] }] });
+
+export const CollaborationThread = sequelize.define('CollaborationThread', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  resourceType: { type: DataTypes.ENUM('action', 'project', 'decision', 'dependency', 'funding_room', 'review_pack', 'quarterly_update'), allowNull: false },
+  resourceId: { type: DataTypes.UUID, allowNull: false },
+  title: { type: DataTypes.STRING(240), allowNull: true },
+  body: { type: DataTypes.TEXT, allowNull: false },
+  mentionUserIds: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
+  createdBy: { type: DataTypes.UUID, allowNull: false },
+}, { ...standard, indexes: [{ name: 'idx_collab_thread_resource', fields: ['organization_id', 'resource_type', 'resource_id', 'created_at'] }] });
+
+export const CollaborationComment = sequelize.define('CollaborationComment', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  threadId: { type: DataTypes.UUID, allowNull: false },
+  body: { type: DataTypes.TEXT, allowNull: false },
+  mentionUserIds: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
+  createdBy: { type: DataTypes.UUID, allowNull: false },
+}, { ...standard, indexes: [{ name: 'idx_collab_comment_thread', fields: ['thread_id', 'created_at'] }] });
+
+export const CollaborationRequest = sequelize.define('CollaborationRequest', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  resourceType: { type: DataTypes.ENUM('action', 'project', 'decision', 'dependency', 'funding_room', 'quarterly_update'), allowNull: false },
+  resourceId: { type: DataTypes.UUID, allowNull: false },
+  requestType: { type: DataTypes.ENUM('update', 'evidence', 'review', 'decision_input', 'handover'), allowNull: false },
+  title: { type: DataTypes.STRING(240), allowNull: false },
+  prompt: { type: DataTypes.TEXT, allowNull: true },
+  requestedFromUserId: { type: DataTypes.UUID, allowNull: false },
+  requestedByUserId: { type: DataTypes.UUID, allowNull: false },
+  dueDate: { type: DataTypes.DATEONLY, allowNull: true },
+  status: { type: DataTypes.ENUM('open', 'submitted', 'changes_requested', 'complete', 'declined'), allowNull: false, defaultValue: 'open' },
+  response: { type: DataTypes.TEXT, allowNull: true },
+  completedAt: { type: DataTypes.DATE, allowNull: true },
+}, { ...standard, indexes: [{ name: 'idx_collab_request_resource', fields: ['organization_id', 'resource_type', 'resource_id', 'status'] }, { name: 'idx_collab_request_assignee', fields: ['organization_id', 'requested_from_user_id', 'status', 'due_date'] }] });
+
+export const CollaborationActivity = sequelize.define('CollaborationActivity', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  resourceType: { type: DataTypes.ENUM('action', 'project', 'decision', 'dependency', 'funding_room', 'review_pack', 'quarterly_update'), allowNull: false },
+  resourceId: { type: DataTypes.UUID, allowNull: false },
+  activityType: { type: DataTypes.STRING(80), allowNull: false },
+  summary: { type: DataTypes.STRING(500), allowNull: false },
+  metadata: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+  actorId: { type: DataTypes.UUID, allowNull: true },
+}, { ...standard, indexes: [{ name: 'idx_collab_activity_resource', fields: ['organization_id', 'resource_type', 'resource_id', 'created_at'] }, { name: 'idx_collab_activity_actor', fields: ['organization_id', 'actor_id', 'created_at'] }] });
+
+export const PartnerCommitment = sequelize.define('PartnerCommitment', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  actionId: { type: DataTypes.UUID, allowNull: false },
+  stakeholderId: { type: DataTypes.UUID, allowNull: true },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  contactName: { type: DataTypes.STRING(180), allowNull: true },
+  contactRole: { type: DataTypes.STRING(180), allowNull: true },
+  contributionType: { type: DataTypes.ENUM('funding', 'land', 'data', 'advocacy', 'approval', 'co_delivery', 'introduction', 'other'), allowNull: false, defaultValue: 'other' },
+  contribution: { type: DataTypes.TEXT, allowNull: false },
+  dueDate: { type: DataTypes.DATEONLY, allowNull: true },
+  status: { type: DataTypes.ENUM('not_started', 'in_progress', 'confirmed', 'complete', 'at_risk', 'declined'), allowNull: false, defaultValue: 'not_started' },
+  evidenceNote: { type: DataTypes.TEXT, allowNull: true },
+  sourceUrl: { type: DataTypes.STRING(1000), allowNull: true },
+}, { ...standard, indexes: [{ name: 'idx_partner_commitment_action', fields: ['organization_id', 'action_id', 'status', 'due_date'] }] });
+
+export const FundingCollaborationRoom = sequelize.define('FundingCollaborationRoom', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  actionId: { type: DataTypes.UUID, allowNull: false },
+  fundingPositionId: { type: DataTypes.UUID, allowNull: true },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  name: { type: DataTypes.STRING(240), allowNull: false },
+  purpose: { type: DataTypes.TEXT, allowNull: true },
+  stage: { type: DataTypes.ENUM('planning', 'eligibility', 'evidence', 'finance_review', 'executive_review', 'submitted', 'outcome', 'closed'), allowNull: false, defaultValue: 'planning' },
+  dueDate: { type: DataTypes.DATEONLY, allowNull: true },
+  status: { type: DataTypes.ENUM('active', 'on_hold', 'complete', 'not_proceeding'), allowNull: false, defaultValue: 'active' },
+}, { ...standard, indexes: [{ name: 'idx_funding_room_action', fields: ['organization_id', 'action_id', 'status', 'due_date'] }] });
+
+export const FundingRoomCheckpoint = sequelize.define('FundingRoomCheckpoint', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  fundingRoomId: { type: DataTypes.UUID, allowNull: false },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  checkpointType: { type: DataTypes.ENUM('eligibility', 'evidence', 'finance', 'partner_commitment', 'internal_review', 'submission', 'outcome'), allowNull: false },
+  title: { type: DataTypes.STRING(240), allowNull: false },
+  dueDate: { type: DataTypes.DATEONLY, allowNull: true },
+  status: { type: DataTypes.ENUM('not_started', 'in_progress', 'complete', 'blocked'), allowNull: false, defaultValue: 'not_started' },
+  note: { type: DataTypes.TEXT, allowNull: true },
+}, { ...standard, indexes: [{ name: 'idx_funding_checkpoint_room', fields: ['funding_room_id', 'status', 'due_date'] }] });
+
+export const EngagementPlan = sequelize.define('EngagementPlan', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  actionId: { type: DataTypes.UUID, allowNull: false },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  purpose: { type: DataTypes.TEXT, allowNull: false },
+  audience: { type: DataTypes.TEXT, allowNull: true },
+  participationLevel: { type: DataTypes.ENUM('inform', 'consult', 'involve', 'collaborate', 'empower'), allowNull: false, defaultValue: 'inform' },
+  questions: { type: DataTypes.TEXT, allowNull: true },
+  methods: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
+  startsOn: { type: DataTypes.DATEONLY, allowNull: true },
+  endsOn: { type: DataTypes.DATEONLY, allowNull: true },
+  findings: { type: DataTypes.TEXT, allowNull: true },
+  decisionImpact: { type: DataTypes.TEXT, allowNull: true },
+  closureMessage: { type: DataTypes.TEXT, allowNull: true },
+  status: { type: DataTypes.ENUM('planning', 'active', 'complete', 'cancelled'), allowNull: false, defaultValue: 'planning' },
+}, { ...standard, indexes: [{ name: 'idx_engagement_plan_action', fields: ['organization_id', 'action_id', 'status'] }] });
+
+export const DecisionPack = sequelize.define('DecisionPack', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  strategyId: { type: DataTypes.UUID, allowNull: true },
+  actionId: { type: DataTypes.UUID, allowNull: true },
+  sourceType: { type: DataTypes.ENUM('action', 'dependency', 'risk', 'funding_position', 'decision'), allowNull: false },
+  sourceId: { type: DataTypes.UUID, allowNull: false },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  decisionMakerId: { type: DataTypes.UUID, allowNull: true },
+  title: { type: DataTypes.STRING(260), allowNull: false },
+  decisionQuestion: { type: DataTypes.TEXT, allowNull: false },
+  recommendation: { type: DataTypes.TEXT, allowNull: true },
+  options: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
+  financialImplications: { type: DataTypes.TEXT, allowNull: true },
+  evidenceSummary: { type: DataTypes.TEXT, allowNull: true },
+  dueDate: { type: DataTypes.DATEONLY, allowNull: true },
+  status: { type: DataTypes.ENUM('draft', 'input_requested', 'ready', 'decided', 'closed'), allowNull: false, defaultValue: 'draft' },
+  outcome: { type: DataTypes.TEXT, allowNull: true },
+  decidedAt: { type: DataTypes.DATE, allowNull: true },
+}, { ...standard, indexes: [{ name: 'idx_decision_pack_action', fields: ['organization_id', 'action_id', 'status', 'due_date'] }, { name: 'idx_decision_pack_source', fields: ['organization_id', 'source_type', 'source_id'] }] });
+
+export const ReviewPack = sequelize.define('ReviewPack', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  strategyId: { type: DataTypes.UUID, allowNull: true },
+  reportingPeriodId: { type: DataTypes.UUID, allowNull: true },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  template: { type: DataTypes.ENUM('weekly_delivery', 'monthly_leadership', 'quarterly_executive', 'partner_coordination'), allowNull: false },
+  title: { type: DataTypes.STRING(260), allowNull: false },
+  purpose: { type: DataTypes.TEXT, allowNull: true },
+  desiredOutcome: { type: DataTypes.TEXT, allowNull: true },
+  executiveSummary: { type: DataTypes.TEXT, allowNull: true },
+  meetingAt: { type: DataTypes.DATE, allowNull: true },
+  audience: { type: DataTypes.STRING(240), allowNull: true },
+  status: { type: DataTypes.ENUM('draft', 'ready', 'completed', 'archived'), allowNull: false, defaultValue: 'draft' },
+  internalOnly: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+}, { ...standard, indexes: [{ name: 'idx_review_pack_strategy', fields: ['organization_id', 'strategy_id', 'status', 'meeting_at'] }] });
+
+export const ReviewPackItem = sequelize.define('ReviewPackItem', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  reviewPackId: { type: DataTypes.UUID, allowNull: false },
+  resourceType: { type: DataTypes.ENUM('action', 'project', 'dependency', 'risk', 'decision', 'funding_position', 'partner_commitment', 'quarterly_update'), allowNull: false },
+  resourceId: { type: DataTypes.UUID, allowNull: false },
+  category: { type: DataTypes.STRING(80), allowNull: true },
+  note: { type: DataTypes.TEXT, allowNull: true },
+  sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+}, { ...standard, indexes: [{ name: 'uq_review_pack_item', unique: true, fields: ['review_pack_id', 'resource_type', 'resource_id'] }, { name: 'idx_review_pack_item_pack', fields: ['review_pack_id', 'sort_order'] }] });
+
+export const ReviewPackQuestion = sequelize.define('ReviewPackQuestion', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  reviewPackId: { type: DataTypes.UUID, allowNull: false },
+  askedBy: { type: DataTypes.UUID, allowNull: false },
+  question: { type: DataTypes.TEXT, allowNull: false },
+  response: { type: DataTypes.TEXT, allowNull: true },
+  respondedBy: { type: DataTypes.UUID, allowNull: true },
+  respondedAt: { type: DataTypes.DATE, allowNull: true },
+}, { ...standard, indexes: [{ name: 'idx_review_pack_question_pack', fields: ['review_pack_id', 'created_at'] }] });
+
+export const ReviewPackOutcome = sequelize.define('ReviewPackOutcome', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  reviewPackId: { type: DataTypes.UUID, allowNull: false },
+  resourceType: { type: DataTypes.ENUM('action', 'project', 'dependency', 'risk', 'decision', 'funding_position', 'partner_commitment'), allowNull: true },
+  resourceId: { type: DataTypes.UUID, allowNull: true },
+  outcomeType: { type: DataTypes.ENUM('decision', 'follow_up', 'note'), allowNull: false },
+  outcome: { type: DataTypes.TEXT, allowNull: false },
+  ownerId: { type: DataTypes.UUID, allowNull: true },
+  dueDate: { type: DataTypes.DATEONLY, allowNull: true },
+  recordedBy: { type: DataTypes.UUID, allowNull: false },
+}, { ...standard, indexes: [{ name: 'idx_review_pack_outcome_pack', fields: ['review_pack_id', 'due_date'] }] });
+
+export const UserWatch = sequelize.define('UserWatch', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  resourceType: { type: DataTypes.ENUM('action', 'project', 'decision', 'funding_position', 'review_pack'), allowNull: false },
+  resourceId: { type: DataTypes.UUID, allowNull: false },
+  deliveryPreference: { type: DataTypes.ENUM('immediate', 'daily_digest', 'weekly_digest'), allowNull: false, defaultValue: 'daily_digest' },
+  isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+}, { ...standard, indexes: [{ name: 'uq_user_watch_resource', unique: true, fields: ['user_id', 'resource_type', 'resource_id'] }, { name: 'idx_user_watch_user', fields: ['organization_id', 'user_id', 'is_active'] }] });
+
+export const CollaborationNotification = sequelize.define('CollaborationNotification', {
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  organizationId: { type: DataTypes.UUID, allowNull: false },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  resourceType: { type: DataTypes.ENUM('action', 'project', 'decision', 'dependency', 'funding_room', 'review_pack', 'quarterly_update'), allowNull: false },
+  resourceId: { type: DataTypes.UUID, allowNull: false },
+  notificationType: { type: DataTypes.ENUM('assignment', 'mention', 'review_requested', 'watch_change', 'handover', 'request'), allowNull: false },
+  title: { type: DataTypes.STRING(260), allowNull: false },
+  detail: { type: DataTypes.STRING(1000), allowNull: true },
+  readAt: { type: DataTypes.DATE, allowNull: true },
+  deliveryPreference: { type: DataTypes.ENUM('in_app', 'daily_digest', 'weekly_digest'), allowNull: false, defaultValue: 'in_app' },
+}, { ...standard, indexes: [{ name: 'idx_collab_notification_user', fields: ['organization_id', 'user_id', 'read_at', 'created_at'] }] });
 
 export const AuditLog = sequelize.define('AuditLog', {
   id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
@@ -938,6 +1164,8 @@ ActionMilestone.belongsTo(User, { as: 'milestoneOwner', foreignKey: 'ownerId' })
 StrategicPlan.hasMany(ActionDependency, { foreignKey: 'strategyId' });
 ActionDependency.belongsTo(StrategicPlan, { foreignKey: 'strategyId' });
 ActionDependency.belongsTo(User, { as: 'dependencyOwner', foreignKey: 'ownerId' });
+ActionDependency.belongsTo(User, { as: 'handoverRequester', foreignKey: 'handoverRequestedBy' });
+ActionDependency.belongsTo(User, { as: 'handoverRecipient', foreignKey: 'handoverRequestedTo' });
 StrategicPlan.hasMany(QuarterlyReportingPeriod, { foreignKey: 'strategyId' });
 QuarterlyReportingPeriod.belongsTo(StrategicPlan, { foreignKey: 'strategyId' });
 QuarterlyReportingPeriod.belongsTo(User, { as: 'periodFinalisedBy', foreignKey: 'finalisedBy' });
@@ -945,6 +1173,8 @@ StrategyAction.hasMany(QuarterlyActionUpdate, { foreignKey: 'actionId' });
 QuarterlyActionUpdate.belongsTo(StrategyAction, { foreignKey: 'actionId' });
 QuarterlyActionUpdate.belongsTo(QuarterlyReportingPeriod, { foreignKey: 'reportingPeriodId' });
 QuarterlyActionUpdate.belongsTo(User, { as: 'updateSubmittedBy', foreignKey: 'submittedBy' });
+QuarterlyActionUpdate.belongsTo(User, { as: 'updateReviewer', foreignKey: 'reviewRequestedFromUserId' });
+QuarterlyActionUpdate.belongsTo(User, { as: 'updateReviewedBy', foreignKey: 'reviewedBy' });
 StrategyAction.hasMany(StrategyMeasure, { foreignKey: 'actionId' });
 StrategyMeasure.belongsTo(StrategyAction, { foreignKey: 'actionId' });
 StrategicPlan.hasMany(StrategyDecision, { foreignKey: 'strategyId' });
@@ -976,6 +1206,57 @@ StrategyAlert.belongsTo(StrategyAction, { foreignKey: 'actionId' });
 StrategyAlert.belongsTo(ActionDependency, { foreignKey: 'dependencyId' });
 StrategyAlert.belongsTo(QuarterlyReportingPeriod, { foreignKey: 'reportingPeriodId' });
 StrategyAlert.belongsTo(User, { as: 'alertOwner', foreignKey: 'ownerId' });
+Organization.hasMany(CollaborationParticipant, { foreignKey: 'organizationId' });
+CollaborationParticipant.belongsTo(Organization, { foreignKey: 'organizationId' });
+CollaborationParticipant.belongsTo(User, { as: 'participantUser', foreignKey: 'userId' });
+CollaborationParticipant.belongsTo(User, { as: 'participantAddedBy', foreignKey: 'addedBy' });
+Organization.hasMany(CollaborationThread, { foreignKey: 'organizationId' });
+CollaborationThread.belongsTo(User, { as: 'threadAuthor', foreignKey: 'createdBy' });
+CollaborationThread.hasMany(CollaborationComment, { foreignKey: 'threadId' });
+CollaborationComment.belongsTo(CollaborationThread, { foreignKey: 'threadId' });
+CollaborationComment.belongsTo(User, { as: 'commentAuthor', foreignKey: 'createdBy' });
+Organization.hasMany(CollaborationRequest, { foreignKey: 'organizationId' });
+CollaborationRequest.belongsTo(User, { as: 'requestRecipient', foreignKey: 'requestedFromUserId' });
+CollaborationRequest.belongsTo(User, { as: 'requester', foreignKey: 'requestedByUserId' });
+Organization.hasMany(CollaborationActivity, { foreignKey: 'organizationId' });
+CollaborationActivity.belongsTo(User, { as: 'activityActor', foreignKey: 'actorId' });
+StrategyAction.hasMany(PartnerCommitment, { foreignKey: 'actionId' });
+PartnerCommitment.belongsTo(StrategyAction, { foreignKey: 'actionId' });
+PartnerCommitment.belongsTo(StrategyStakeholder, { foreignKey: 'stakeholderId' });
+PartnerCommitment.belongsTo(User, { as: 'commitmentOwner', foreignKey: 'ownerId' });
+StrategyAction.hasMany(FundingCollaborationRoom, { foreignKey: 'actionId' });
+FundingCollaborationRoom.belongsTo(StrategyAction, { foreignKey: 'actionId' });
+FundingCollaborationRoom.belongsTo(ActionFundingPosition, { foreignKey: 'fundingPositionId' });
+FundingCollaborationRoom.belongsTo(User, { as: 'fundingRoomOwner', foreignKey: 'ownerId' });
+FundingCollaborationRoom.hasMany(FundingRoomCheckpoint, { foreignKey: 'fundingRoomId' });
+FundingRoomCheckpoint.belongsTo(FundingCollaborationRoom, { foreignKey: 'fundingRoomId' });
+FundingRoomCheckpoint.belongsTo(User, { as: 'checkpointOwner', foreignKey: 'ownerId' });
+StrategyAction.hasMany(EngagementPlan, { foreignKey: 'actionId' });
+EngagementPlan.belongsTo(StrategyAction, { foreignKey: 'actionId' });
+EngagementPlan.belongsTo(User, { as: 'engagementOwner', foreignKey: 'ownerId' });
+StrategicPlan.hasMany(DecisionPack, { foreignKey: 'strategyId' });
+DecisionPack.belongsTo(StrategicPlan, { foreignKey: 'strategyId' });
+DecisionPack.belongsTo(StrategyAction, { foreignKey: 'actionId' });
+DecisionPack.belongsTo(User, { as: 'decisionPackOwner', foreignKey: 'ownerId' });
+DecisionPack.belongsTo(User, { as: 'decisionPackDecisionMaker', foreignKey: 'decisionMakerId' });
+StrategicPlan.hasMany(ReviewPack, { foreignKey: 'strategyId' });
+ReviewPack.belongsTo(StrategicPlan, { foreignKey: 'strategyId' });
+ReviewPack.belongsTo(QuarterlyReportingPeriod, { foreignKey: 'reportingPeriodId' });
+ReviewPack.belongsTo(User, { as: 'reviewPackOwner', foreignKey: 'ownerId' });
+ReviewPack.hasMany(ReviewPackItem, { foreignKey: 'reviewPackId' });
+ReviewPackItem.belongsTo(ReviewPack, { foreignKey: 'reviewPackId' });
+ReviewPack.hasMany(ReviewPackQuestion, { foreignKey: 'reviewPackId' });
+ReviewPackQuestion.belongsTo(ReviewPack, { foreignKey: 'reviewPackId' });
+ReviewPackQuestion.belongsTo(User, { as: 'questionAuthor', foreignKey: 'askedBy' });
+ReviewPackQuestion.belongsTo(User, { as: 'questionResponder', foreignKey: 'respondedBy' });
+ReviewPack.hasMany(ReviewPackOutcome, { foreignKey: 'reviewPackId' });
+ReviewPackOutcome.belongsTo(ReviewPack, { foreignKey: 'reviewPackId' });
+ReviewPackOutcome.belongsTo(User, { as: 'outcomeOwner', foreignKey: 'ownerId' });
+ReviewPackOutcome.belongsTo(User, { as: 'outcomeRecorder', foreignKey: 'recordedBy' });
+Organization.hasMany(UserWatch, { foreignKey: 'organizationId' });
+UserWatch.belongsTo(User, { as: 'watchingUser', foreignKey: 'userId' });
+Organization.hasMany(CollaborationNotification, { foreignKey: 'organizationId' });
+CollaborationNotification.belongsTo(User, { as: 'notificationRecipient', foreignKey: 'userId' });
 PublicLead.hasMany(PulseLeadSession, { foreignKey: 'leadId' });
 PulseLeadSession.belongsTo(PublicLead, { foreignKey: 'leadId' });
 PublicLead.hasMany(PulseLeadConsent, { foreignKey: 'leadId' });
@@ -985,4 +1266,4 @@ PulseLeadResult.belongsTo(PublicLead, { foreignKey: 'leadId' });
 PublicLead.hasMany(PulseLeadNotification, { foreignKey: 'leadId' });
 PulseLeadNotification.belongsTo(PublicLead, { foreignKey: 'leadId' });
 PublicContactEnquiry.belongsTo(User, { as: 'followUpOwner', foreignKey: 'followUpOwnerId' });
-export const models = { Organization, User, ProductPlan, Subscription, BillingProfile, BillingInvoice, BillingRefund, BillingEvent, PasswordResetToken, CouncilInvitation, IntegrationConnection, PlatformSetting, SupportCase, SupportAttachment, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, StrategicPlan, StrategyFocusArea, StrategyStatusDefinition, StrategyAction, StrategyActionProject, ActionMilestone, ActionDependency, QuarterlyReportingPeriod, QuarterlyActionUpdate, StrategyMeasure, StrategyDecision, StrategyStakeholder, StrategyRiskIssue, ActionFundingPosition, ActionEvidenceLink, StrategyReportSnapshot, StrategyAlert, AuditLog, PublicLead, PulseLeadSession, PulseLeadConsent, PulseLeadResult, PulseLeadNotification, PublicFormChallenge, PublicContactEnquiry };
+export const models = { Organization, User, ProductPlan, Subscription, BillingProfile, BillingInvoice, BillingRefund, BillingEvent, PasswordResetToken, CouncilInvitation, IntegrationConnection, PlatformSetting, SupportCase, SupportAttachment, CustomerContact, CustomerNote, TenantStateEvent, SelectorOptionSet, SelectorOption, OrganizationSelectorOptionOverride, Priority, CivicProject, ProjectPriority, ProjectSelectorValue, ProjectConstraint, ReadinessAssessment, FundingPathway, Grant, WorkItem, EvidenceItem, StrategicPlan, StrategyFocusArea, StrategyStatusDefinition, StrategyAction, StrategyActionProject, ActionMilestone, ActionDependency, QuarterlyReportingPeriod, QuarterlyActionUpdate, StrategyMeasure, StrategyDecision, StrategyStakeholder, StrategyRiskIssue, ActionFundingPosition, ActionEvidenceLink, StrategyReportSnapshot, StrategyAlert, CollaborationParticipant, CollaborationThread, CollaborationComment, CollaborationRequest, CollaborationActivity, PartnerCommitment, FundingCollaborationRoom, FundingRoomCheckpoint, EngagementPlan, DecisionPack, ReviewPack, ReviewPackItem, ReviewPackQuestion, ReviewPackOutcome, UserWatch, CollaborationNotification, AuditLog, PublicLead, PulseLeadSession, PulseLeadConsent, PulseLeadResult, PulseLeadNotification, PublicFormChallenge, PublicContactEnquiry };

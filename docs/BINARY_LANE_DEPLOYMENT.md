@@ -63,3 +63,7 @@ Migration `012_council_people_access.mjs` adds the hashed, time-limited Council-
 ## Self-service operations and support targets
 
 Migration `013_self_service_operations.mjs` is additive-only: it adds Workspace Profile fields, support first-response timestamps and the operational email-delivery outcome table. It does not alter or remove existing Council records. After deployment, verify workspace-profile saving, project/grant CSV preview and confirmation, protected public-contact confirmation and the System Admin **Message delivery** monitor in a non-production tenant. Configure SES before expecting an email to move beyond `disabled`; do not treat a provider `sent` result as a guarantee of inbox delivery.
+
+## Internal collaboration workspaces
+
+Migration `014_collaboration_workspaces.mjs` is additive-only. It adds tenant-scoped internal collaboration records, dependency handover/RACI fields and the quarterly-review workflow while preserving existing recorded quarterly updates as included in historic reports. Deploy the migration before the related application build. In a non-production tenant, validate a Council user can add an internal action participant, create and reply to a working note, complete a contribution request, accept a dependency handover, progress a quarterly update through review, and create an internal-only Review Pack. No external partner portal, public sharing link or automatic collaboration email is part of this release. See `docs/COLLABORATION_WORKSPACES.md` for the operating model.

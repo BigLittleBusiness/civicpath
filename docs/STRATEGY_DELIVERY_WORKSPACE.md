@@ -21,14 +21,16 @@ The implementation is a CivicPath Core capability. It is separate from, but can 
 | Decision, risk and issue register | Accountable decision-maker, due date, mitigation and follow-up | Directs discussion to the choices or interventions needed. |
 | Evidence, measure and funding context | Links, indicator values, cadence, baselines, targets and funding positions | Keeps reported progress grounded in an evidence trail. |
 | Alerts and snapshots | In-app attention alerts and immutable report snapshots | Supports a consistent accountability rhythm and audit trail. |
+| Internal collaboration | Working groups, notes, requests, dependency handovers, partner commitments, funding rooms and engagement plans | Adds practical cross-team context without creating an external partner portal. |
+| Review workflow and Review Packs | Reviewed quarterly updates, decision packs, meeting questions and linked follow-up outcomes | Keeps leadership discussion decision-ready and ties outcomes back to live delivery records. |
 
 ## Recommended operating rhythm
 
 1. **Set up the strategy:** Record the adopted title, reference, version, term and reporting cadence. Add focus areas using the strategy's own language.
 2. **Establish the register:** Import a CSV or create actions individually. Assign an owner, next step, readiness position and decision date where known.
 3. **Link the delivery chain:** Link existing portfolio projects, add milestones and nominate dependencies. Use **critical** only when the dependency needs leadership-level resolution or close monitoring.
-4. **Run the quarter:** Use the action detail to capture movement, evidence, risks, decisions and next-quarter commitments. Keep free text focused on decision value.
-5. **Prepare the review:** The Quarterly Report view consolidates recorded status, update coverage, attention items, focus-area mix and latest narratives. It remains a data-led draft for officer review.
+4. **Run the quarter:** Use the action detail to capture movement, evidence, risks, decisions and next-quarter commitments. Keep free text focused on decision value. Submit the update to a named reviewer, respond to changes, then mark it included in report only after endorsement.
+5. **Prepare the review:** The Quarterly Report view consolidates recorded status, included-update coverage, attention items, focus-area mix and latest narratives. Use an internal Review Pack for pre-reading questions, decisions and owned outcomes. It remains a data-led draft for officer review.
 6. **Record the record:** Save a report snapshot after the relevant review. A snapshot is deliberately immutable; corrections belong in the live register and the next report snapshot.
 
 ## Controlled status model
@@ -73,10 +75,10 @@ Alerts do not send email or make any external notification in this release. This
 
 - Every record carries `organizationId` and is retrieved through signed tenant claims.
 - All mutation endpoints confirm parent strategy, action, project, owner and period relationships belong to the same organisation.
-- `org_admin` and `portfolio_manager` can set up strategy configuration; contributors can maintain delivery records where the route allows it.
+- `org_admin` and `portfolio_manager` can set up strategy configuration and Review Packs; contributors can maintain permitted delivery records and internal collaboration context; executives retain read-only visibility.
 - Mutations use the existing CivicPath audit service. Report snapshots keep their rendered data and counts at the time of preparation.
 - Demonstration records are labelled as illustrative and are only seeded into the protected demo tenant.
 
 ## Deployment
 
-Migration `009_strategy_delivery_workspace.mjs` must run after migrations `001`–`008`. The Binary Lane deployment script runs it in sequence. See `docs/BINARY_LANE_DEPLOYMENT.md` for the production runbook.
+Migration `009_strategy_delivery_workspace.mjs` must run after migrations `001`–`008`. Migration `014_collaboration_workspaces.mjs` adds the internal collaboration layer. The Binary Lane deployment script runs all migrations in sequence. See `docs/BINARY_LANE_DEPLOYMENT.md` for the production runbook and `docs/COLLABORATION_WORKSPACES.md` for the internal-first collaboration boundary.

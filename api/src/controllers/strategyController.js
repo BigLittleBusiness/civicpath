@@ -6,6 +6,7 @@ import {
   ActionEvidenceLink,
   ActionFundingPosition,
   ActionMilestone,
+  CollaborationParticipant,
   CivicProject,
   QuarterlyActionUpdate,
   QuarterlyReportingPeriod,
@@ -151,7 +152,7 @@ async function reportPackage(organizationId, strategyId, reportingPeriodId = nul
   const strategy = await StrategicPlan.findOne({ where: { organizationId, id: strategyId }, include: [{ model: StrategyFocusArea, where: { status: 'active' }, required: false, order: [['sortOrder', 'ASC']] }] });
   if (!strategy) return null;
   const period = reportingPeriodId ? await QuarterlyReportingPeriod.findOne({ where: { organizationId, strategyId, id: reportingPeriodId } }) : await QuarterlyReportingPeriod.findOne({ where: { organizationId, strategyId, status: 'open' }, order: [['endsOn', 'DESC']] }) || await QuarterlyReportingPeriod.findOne({ where: { organizationId, strategyId }, order: [['endsOn', 'DESC']] });
-  const [statuses, actions, dependencies, milestones, decisions, updates, risks, measures, funding] = await Promise.all([
+  const [statuses, actions, dependencies, milestones, decisions, allUpdates, risks, measures, funding] = await Promise.all([
     StrategyStatusDefinition.findAll({ where: { organizationId, strategyId, isActive: true }, order: [['sortOrder', 'ASC']] }),
     StrategyAction.findAll({ where: { organizationId, strategyId, isActive: true }, include: [{ model: StrategyFocusArea, attributes: ['id', 'code', 'title'] }, { model: User, as: 'actionOwner', attributes: ['id', 'firstName', 'lastName'] }], order: [['reportingPriority', 'DESC'], ['targetDate', 'ASC']] }),
     ActionDependency.findAll({ where: { organizationId, strategyId, status: { [Op.in]: ['open', 'progressing'] } }, include: [{ model: User, as: 'dependencyOwner', attributes: ['id', 'firstName', 'lastName'] }] }),
@@ -169,7 +170,8 @@ async function reportPackage(organizationId, strategyId, reportingPeriodId = nul
   const overdueMilestones = milestones.filter((item) => item.dueDate && item.dueDate < todayIso()).map(plain);
   const criticalDependencies = (await resolveReferences(organizationId, dependencies.filter((item) => item.severity === 'critical')));
   const unresolvedDecisions = decisions.map(plain);
-  const currentUpdates = updates.map(plain);
+  const currentUpdates = allUpdates.filter((update) => update.workflowStatus === 'included_in_report').map(plain);
+  const updatesAwaitingInclusion = allUpdates.filter((update) => update.workflowStatus !== 'included_in_report').map(plain);
   const updateCoverage = actionRows.length ? Math.round((currentUpdates.length / actionRows.length) * 100) : 0;
   const evidenceCoverage = actionRows.length ? Math.round((actionRows.filter((action) => action.readinessScore > 0).length / actionRows.length) * 100) : 0;
   const fundingTotal = funding.reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -177,7 +179,7 @@ async function reportPackage(organizationId, strategyId, reportingPeriodId = nul
     totalActions: actionRows.length, onTrack: statusMix.find((item) => item.category === 'on_track')?.count || 0, attentionRequired: statusMix.filter((item) => ['attention', 'off_track'].includes(item.category)).reduce((sum, item) => sum + item.count, 0), completed: statusMix.find((item) => item.category === 'complete')?.count || 0, criticalDependencies: criticalDependencies.length, overdueMilestones: overdueMilestones.length, decisionsRequired: unresolvedDecisions.length, updateCoverage, evidenceCoverage, fundingTotal,
   };
   const narrative = `This review covers ${summary.totalActions} active actions${period ? ` for ${period.label}` : ''}. ${summary.onTrack} are on track, ${summary.attentionRequired} require attention and ${summary.completed} are complete. ${summary.criticalDependencies ? `${summary.criticalDependencies} critical dependencies require active resolution. ` : ''}${summary.decisionsRequired ? `${summary.decisionsRequired} decision items should be considered in the next leadership discussion. ` : ''}${summary.overdueMilestones ? `${summary.overdueMilestones} milestones are overdue. ` : ''}This is a data-led draft for officer review; it does not infer outcomes or make claims beyond the recorded evidence.`;
-  return { strategy: plain(strategy), reportingPeriod: plain(period), summary, statusMix, focusSummary, actions: actionRows, dependencies: await resolveReferences(organizationId, dependencies), criticalDependencies, overdueMilestones, decisions: unresolvedDecisions, updates: currentUpdates, risks: risks.map(plain), measures: measures.map(plain), funding: funding.map(plain), narrative };
+  return { strategy: plain(strategy), reportingPeriod: plain(period), summary, statusMix, focusSummary, actions: actionRows, dependencies: await resolveReferences(organizationId, dependencies), criticalDependencies, overdueMilestones, decisions: unresolvedDecisions, updates: currentUpdates, updatesAwaitingInclusion, risks: risks.map(plain), measures: measures.map(plain), funding: funding.map(plain), narrative };
 }
 
 export async function listStrategyWorkspace(req, res, next) {
@@ -239,6 +241,7 @@ export async function createStrategyAction(req, res, next) {
     if (value.focusAreaId && !await StrategyFocusArea.findOne({ where: { id: value.focusAreaId, organizationId: req.tenant.organizationId, strategyId: strategy.id, status: 'active' } })) return res.status(422).json({ error: 'The selected focus area is not available for this strategy.' });
     if (value.ownerId && !await ownerExists(req.tenant.organizationId, value.ownerId)) return res.status(422).json({ error: 'The nominated action owner is not active in this council.' });
     const action = await StrategyAction.create({ ...value, organizationId: req.tenant.organizationId, strategyId: strategy.id });
+    if (action.ownerId) await CollaborationParticipant.findOrCreate({ where: { organizationId: req.tenant.organizationId, resourceType: 'action', resourceId: action.id, userId: action.ownerId, role: 'accountable' }, defaults: { addedBy: req.auth.sub } });
     await recordAudit(req, { entityType: 'strategy_action', entityId: action.id, action: 'created', metadata: { strategyId: strategy.id, actionCode: action.actionCode } });
     return res.status(201).json({ data: await actionDetail(req.tenant.organizationId, action.id) });
   } catch (error) { return next(error); }
@@ -254,7 +257,9 @@ export async function updateStrategyAction(req, res, next) {
     const value = validation(actionSchema, req.body, res, { partial: true }); if (!value) return;
     if (value.focusAreaId && !await StrategyFocusArea.findOne({ where: { id: value.focusAreaId, organizationId: req.tenant.organizationId, strategyId: action.strategyId, status: 'active' } })) return res.status(422).json({ error: 'The selected focus area is not available for this strategy.' });
     if (value.ownerId && !await ownerExists(req.tenant.organizationId, value.ownerId)) return res.status(422).json({ error: 'The nominated action owner is not active in this council.' });
-    await action.update(value); await recordAudit(req, { entityType: 'strategy_action', entityId: action.id, action: 'updated', metadata: Object.keys(value) });
+    await action.update(value);
+    if (value.ownerId) await CollaborationParticipant.findOrCreate({ where: { organizationId: req.tenant.organizationId, resourceType: 'action', resourceId: action.id, userId: value.ownerId, role: 'accountable' }, defaults: { addedBy: req.auth.sub } });
+    await recordAudit(req, { entityType: 'strategy_action', entityId: action.id, action: 'updated', metadata: Object.keys(value) });
     return res.json({ data: await actionDetail(req.tenant.organizationId, action.id) });
   } catch (error) { return next(error); }
 }
