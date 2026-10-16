@@ -106,6 +106,7 @@ export default function Home() {
         <nav id="site-nav" className={menuOpen ? "site-nav is-open" : "site-nav"} aria-label="Primary navigation">
           <a href="#workflow" onClick={() => setMenuOpen(false)}>How it works</a>
           <a href="#councils" onClick={() => setMenuOpen(false)}>For councils</a>
+          <a href="/collaboration" onClick={() => setMenuOpen(false)}>Collaboration</a>
           <a href="#pricing" onClick={() => setMenuOpen(false)}>Pricing</a>
           <a href="#faq" onClick={() => setMenuOpen(false)}>FAQ</a>
           <a className="nav-cta" href="/contact" onClick={() => setMenuOpen(false)}>Discuss a Council Proof <span>↗</span></a>
