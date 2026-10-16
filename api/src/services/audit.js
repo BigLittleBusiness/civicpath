@@ -1,6 +1,8 @@
 import { AuditLog } from '../models/index.js';
 
-export function recordAudit(req, { entityType, entityId, action, metadata = {} }) {
+// Callers performing multi-record business operations must pass the active
+// transaction so that the audit trail commits or rolls back with the change.
+export function recordAudit(req, { entityType, entityId, action, metadata = {}, transaction } = {}) {
   return AuditLog.create({
     organizationId: req.tenant.organizationId,
     userId: req.auth?.sub || null,
@@ -9,6 +11,5 @@ export function recordAudit(req, { entityType, entityId, action, metadata = {} }
     action,
     metadata,
     ipAddress: req.ip,
-  }).catch((error) => console.error('Audit log write failed', error));
+  }, transaction ? { transaction } : undefined);
 }
-

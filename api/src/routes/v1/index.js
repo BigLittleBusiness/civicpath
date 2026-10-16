@@ -169,7 +169,7 @@ v1Router.get('/decision-packs/:packId', getDecisionPack);
 v1Router.post('/review-packs', requireRoles('org_admin', 'portfolio_manager'), createReviewPack);
 v1Router.get('/review-packs', listReviewPacks);
 v1Router.get('/review-packs/:reviewPackId', getReviewPack);
-v1Router.post('/review-packs/:reviewPackId/questions', createReviewPackQuestion);
+v1Router.post('/review-packs/:reviewPackId/questions', requireRoles('org_admin', 'portfolio_manager', 'contributor'), createReviewPackQuestion);
 v1Router.post('/review-packs/:reviewPackId/outcomes', requireRoles('org_admin', 'portfolio_manager'), createReviewPackOutcome);
 v1Router.patch('/strategy-alerts/:alertId', requireRoles('org_admin', 'portfolio_manager'), updateAlert);
 v1Router.post('/demo/reset', requireRoles('org_admin'), resetDemo);

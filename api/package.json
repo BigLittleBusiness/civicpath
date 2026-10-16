@@ -12,47 +12,46 @@
     "test:system-admin-mfa": "node tests/systemAdminMfaFlow.mjs",
     "test:people-access": "node tests/peopleAccessFlow.mjs",
     "test:strategy-delivery": "node tests/strategyDeliveryFlow.mjs",
-    "test:collaboration": "node tests/collaborationFlow.mjs"
+    "test:collaboration": "NODE_ENV=development node tests/collaborationFlow.mjs",
+    "test:collaboration-migration": "NODE_ENV=development node tests/collaborationMigration014Rerun.mjs",
+    "test:collaboration-rollback": "NODE_ENV=development node tests/collaborationTransactionRollback.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1068.0",
-    "@aws-sdk/client-ses": "^3.1068.0",
+    "@aws-sdk/client-s3": "3.1152.0",
+    "@aws-sdk/client-ses": "3.1152.0",
     "@stripe/stripe-js": "^7.1.0",
     "altcha-lib": "2.5.0",
     "axios": "^1.18.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
-    "crypto": "^1.0.1",
     "dotenv": "^16.5.0",
-    "email-templates": "^12.0.2",
-    "express": "^4.21.2",
+    "express": "5.3.0",
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
     "jwt-decode": "^4.0.0",
-    "moment": "^2.30.1",
+    "moment": "2.31.0",
     "multer": "^1.4.5-lts.1",
     "multer-s3": "^3.0.1",
     "mysql2": "^3.12.0",
     "node-cron": "^4.6.0",
-    "nodemailer": "^6.10.0",
     "openai": "^6.45.0",
-    "pug": "^3.0.3",
     "qrcode": "^1.5.4",
-    "randomstring": "^1.3.1",
     "sequelize": "^6.37.5",
     "speakeasy": "^2.0.0",
-    "stripe": "^18.0.0",
-    "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "stripe": "^18.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"
+  },
+  "overrides": {
+    "uuid": "11.1.1",
+    "ip-address": "10.7.4"
   }
 }

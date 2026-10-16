@@ -12,6 +12,7 @@ import {
   FundingCollaborationRoom,
   FundingRoomCheckpoint,
   PartnerCommitment,
+  PlatformSetting,
   QuarterlyActionUpdate,
   ReviewPack,
   ReviewPackItem,
@@ -38,9 +39,28 @@ try {
   // modifies, deletes or exposes existing Council tenant data.
   await addMissingColumns(ActionDependency, ['handoverRequestedBy', 'handoverRequestedTo', 'handoverStatus', 'handoverResponse', 'proposedDueDate', 'raci']);
   await addMissingColumns(QuarterlyActionUpdate, ['workflowStatus', 'reviewRequestedFromUserId', 'reviewedBy', 'reviewedAt', 'reviewComment', 'includedInReportAt']);
-  // Existing recorded updates were already part of established reporting. Mark them
-  // as included once so the new review workflow does not hide historical reports.
-  await QuarterlyActionUpdate.update({ workflowStatus: 'included_in_report', includedInReportAt: sequelize.col('submitted_at') }, { where: { workflowStatus: 'draft' } });
+  // Existing recorded updates were already part of established reporting. The
+  // migration runner intentionally reruns each migration, so persist a durable,
+  // auditable cutover marker. New drafts created after the first collaboration
+  // deployment must remain drafts until an authorised manager includes them.
+  await sequelize.transaction(async (transaction) => {
+    const [cutover, created] = await PlatformSetting.findOrCreate({
+      where: { settingKey: 'collaboration_014_quarterly_workflow_cutover' },
+      defaults: { configuration: { version: 1, status: 'started' } },
+      transaction,
+    });
+    if (!created) return;
+    const [legacyUpdatesIncluded] = await QuarterlyActionUpdate.update(
+      {
+        workflowStatus: 'included_in_report',
+        includedInReportAt: sequelize.fn('COALESCE', sequelize.col('submitted_at'), sequelize.col('created_at')),
+      },
+      { where: { workflowStatus: 'draft' }, transaction },
+    );
+    await cutover.update({
+      configuration: { version: 1, status: 'complete', legacyUpdatesIncluded, completedAt: new Date().toISOString() },
+    }, { transaction });
+  });
   for (const model of [
     CollaborationParticipant,
     CollaborationThread,

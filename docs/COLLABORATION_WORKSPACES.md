@@ -16,12 +16,12 @@ Every collaboration record is tenant-scoped and written through authenticated AP
 | Internal notes and replies | Preserve delivery context, rationale, handover notes and focused internal discussion. | Notes, mentions and replies are authenticated and audited; no public links. |
 | Contribution requests | Ask an internal colleague for an update, evidence, review, decision input or handover response. | A requested user or a manager may respond; notifications are in-app records. |
 | Dependency handovers | Request and accept ownership across teams; retain response, proposed date and a lightweight RACI map. | Only the nominated recipient or a manager may respond; an accepted handover updates the recorded owner. |
-| Quarterly update workflow | Draft → submitted for review → changes requested or endorsed → included in report. | A quarterly report uses only updates marked **included in report**. Existing historical updates remain included during migration. |
+| Quarterly update workflow | Draft → submitted for review → changes requested or endorsed → included in report. | A quarterly report uses only updates marked **included in report**. A nominated reviewer may endorse or request changes, while only an Organisation Administrator or Portfolio Manager may include an update in the report. The one-time migration cutover preserves historical updates without altering later drafts. |
 | Partner commitments | Record the concrete contribution, internal owner, due date, evidence note and status required from a partner. | External contacts are context only; no partner portal is created. |
 | Funding collaboration rooms | Coordinate eligibility, evidence, finance and executive review checkpoints for a funding opportunity. | Council users only; linked to the action and optional existing funding position. |
 | Engagement plans | Record purpose, audience, IAP2-style participation level, methods, findings, decision impact and closure message. | This is a planning and audit record, not a public consultation tool. |
 | Decision Packs | Assemble a decision question, recommendation, options, financial implications, evidence and internal input requests. | Internal only; no public export or external share route is provided. |
-| Review Packs | Prepare weekly delivery, monthly leadership, quarterly executive or partner-coordination meetings from live records; capture questions and owned outcomes. | Packs are marked `internalOnly`; outcomes retain links to the underlying Council delivery record. |
+| Review Packs | Prepare weekly delivery, monthly leadership, quarterly executive or partner-coordination meetings from live records; capture questions and owned outcomes. | Packs are marked `internalOnly`; Organisation Administrators, Portfolio Managers and Contributors can add pre-reading questions, while Executives retain read-only visibility. Outcomes retain links to the underlying Council delivery record. |
 | Personal watch list | Follow actions, projects, decisions, funding positions and Review Packs with a stored immediate/daily/weekly preference. | The first release records in-app notifications and preferences only; it does not send unapproved email digests. |
 
 ## Review Pack use
@@ -49,8 +49,8 @@ The meeting pack is a facilitation aid; formal delegations, Council resolutions 
 
 ## Security and deployment
 
-- Migration `014_collaboration_workspaces.mjs` is additive only. It creates new collaboration tables and adds workflow fields without deleting or reshaping existing Council records.
-- All created, changed, submitted, reviewed, handed-over and outcome-recorded events use CivicPath's audit service.
+- Migration `014_collaboration_workspaces.mjs` is additive only. It creates new collaboration tables and adds workflow fields without deleting or reshaping existing Council records. Its persisted cutover marker ensures historic report inclusion occurs once only, not on later deployments.
+- All created, changed, submitted, reviewed, handed-over and outcome-recorded events use CivicPath's audit service inside the same database transaction as the governed collaboration change.
 - Row access is constrained by `organizationId`; controller checks verify every referenced action, project, user, strategy, reporting period and source record belongs to the active tenant.
 - In-app notifications avoid sending unapproved messages. Any future email or Teams-style integration must be Council-approved and use an explicit notification policy.
 - Production deployment must run `npm run db:migrate` before the API and frontend release. Validate the internal collaboration flow in a non-production Council tenant first.

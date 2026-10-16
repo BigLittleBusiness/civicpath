@@ -28,6 +28,7 @@ import {
   User,
   UserWatch,
 } from '../models/index.js';
+import { sequelize } from '../config/database.js';
 import { recordAudit } from '../services/audit.js';
 
 const RESOURCE_TYPES = ['action', 'project', 'decision', 'dependency', 'funding_room', 'review_pack', 'quarterly_update'];
@@ -84,20 +85,20 @@ async function ensureResource(organizationId, resourceType, resourceId) {
   return Model.findOne({ where: { id: resourceId, organizationId } });
 }
 
-async function activity({ organizationId, resourceType, resourceId, actorId, activityType, summary, metadata = {} }) {
-  return CollaborationActivity.create({ organizationId, resourceType, resourceId, actorId, activityType, summary, metadata });
+async function activity({ organizationId, resourceType, resourceId, actorId, activityType, summary, metadata = {}, transaction }) {
+  return CollaborationActivity.create({ organizationId, resourceType, resourceId, actorId, activityType, summary, metadata }, transaction ? { transaction } : undefined);
 }
 
-async function notify({ organizationId, userIds, actorId, resourceType, resourceId, notificationType, title, detail = null }) {
+async function notify({ organizationId, userIds, actorId, resourceType, resourceId, notificationType, title, detail = null, transaction }) {
   const ids = [...new Set((userIds || []).filter((id) => id && id !== actorId))];
   if (!ids.length) return;
-  const recipients = await User.findAll({ where: { id: ids, organizationId, status: 'active' }, attributes: ['id'] });
+  const recipients = await User.findAll({ where: { id: ids, organizationId, status: 'active' }, attributes: ['id'], transaction });
   if (!recipients.length) return;
-  await CollaborationNotification.bulkCreate(recipients.map((user) => ({ organizationId, userId: user.id, resourceType, resourceId, notificationType, title, detail })));
+  await CollaborationNotification.bulkCreate(recipients.map((user) => ({ organizationId, userId: user.id, resourceType, resourceId, notificationType, title, detail })), { transaction });
 }
 
-async function audit(req, entityType, entityId, action, metadata = {}) {
-  return recordAudit(req, { entityType, entityId, action, metadata });
+async function audit(req, entityType, entityId, action, metadata = {}, transaction) {
+  return recordAudit(req, { entityType, entityId, action, metadata, transaction });
 }
 
 export async function getActionCollaboration(req, res, next) {
@@ -126,14 +127,15 @@ export async function addActionParticipant(req, res, next) {
     const action = await StrategyAction.findOne({ where: { id: req.params.actionId, organizationId } });
     if (!action) return res.status(404).json({ error: 'Strategy action not found.' });
     const user = await requireActiveUser(organizationId, value.userId, res, 'participant'); if (!user) return;
-    const [record, created] = await CollaborationParticipant.findOrCreate({ where: { organizationId, resourceType: 'action', resourceId: action.id, userId: user.id, role: value.role }, defaults: { addedBy: req.auth.sub } });
-    if (created) {
-      await Promise.all([
-        activity({ organizationId, resourceType: 'action', resourceId: action.id, actorId: req.auth.sub, activityType: 'participant_added', summary: `${user.firstName} ${user.lastName} added as ${value.role.replace(/_/g, ' ')}.`, metadata: { userId: user.id, role: value.role } }),
-        notify({ organizationId, userIds: [user.id], actorId: req.auth.sub, resourceType: 'action', resourceId: action.id, notificationType: 'assignment', title: 'You were added to an action workspace', detail: action.title }),
-        audit(req, 'collaboration_participant', record.id, 'created', { actionId: action.id, userId: user.id, role: value.role }),
+    const [record, created] = await sequelize.transaction(async (transaction) => {
+      const result = await CollaborationParticipant.findOrCreate({ where: { organizationId, resourceType: 'action', resourceId: action.id, userId: user.id, role: value.role }, defaults: { addedBy: req.auth.sub }, transaction });
+      if (result[1]) await Promise.all([
+        activity({ organizationId, resourceType: 'action', resourceId: action.id, actorId: req.auth.sub, activityType: 'participant_added', summary: `${user.firstName} ${user.lastName} added as ${value.role.replace(/_/g, ' ')}.`, metadata: { userId: user.id, role: value.role }, transaction }),
+        notify({ organizationId, userIds: [user.id], actorId: req.auth.sub, resourceType: 'action', resourceId: action.id, notificationType: 'assignment', title: 'You were added to an action workspace', detail: action.title, transaction }),
+        audit(req, 'collaboration_participant', result[0].id, 'created', { actionId: action.id, userId: user.id, role: value.role }, transaction),
       ]);
-    }
+      return result;
+    });
     return res.status(created ? 201 : 200).json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -145,12 +147,15 @@ export async function createActionThread(req, res, next) {
     const action = await StrategyAction.findOne({ where: { id: req.params.actionId, organizationId } });
     if (!action) return res.status(404).json({ error: 'Strategy action not found.' });
     for (const userId of value.mentionUserIds) if (!await requireActiveUser(organizationId, userId, res, 'mentioned user')) return;
-    const record = await CollaborationThread.create({ organizationId, resourceType: 'action', resourceId: action.id, title: value.title || null, body: value.body, mentionUserIds: value.mentionUserIds, createdBy: req.auth.sub });
-    await Promise.all([
-      activity({ organizationId, resourceType: 'action', resourceId: action.id, actorId: req.auth.sub, activityType: 'thread_started', summary: value.title || 'A collaboration note was added.' }),
-      notify({ organizationId, userIds: value.mentionUserIds, actorId: req.auth.sub, resourceType: 'action', resourceId: action.id, notificationType: 'mention', title: 'You were mentioned in an action workspace', detail: action.title }),
-      audit(req, 'collaboration_thread', record.id, 'created', { actionId: action.id, mentionCount: value.mentionUserIds.length }),
-    ]);
+    const record = await sequelize.transaction(async (transaction) => {
+      const created = await CollaborationThread.create({ organizationId, resourceType: 'action', resourceId: action.id, title: value.title || null, body: value.body, mentionUserIds: value.mentionUserIds, createdBy: req.auth.sub }, { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: 'action', resourceId: action.id, actorId: req.auth.sub, activityType: 'thread_started', summary: value.title || 'A collaboration note was added.', transaction }),
+        notify({ organizationId, userIds: value.mentionUserIds, actorId: req.auth.sub, resourceType: 'action', resourceId: action.id, notificationType: 'mention', title: 'You were mentioned in an action workspace', detail: action.title, transaction }),
+        audit(req, 'collaboration_thread', created.id, 'created', { actionId: action.id, mentionCount: value.mentionUserIds.length }, transaction),
+      ]);
+      return created;
+    });
     return res.status(201).json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -162,12 +167,15 @@ export async function createThreadComment(req, res, next) {
     const thread = await CollaborationThread.findOne({ where: { id: req.params.threadId, organizationId } });
     if (!thread) return res.status(404).json({ error: 'Collaboration thread not found.' });
     for (const userId of value.mentionUserIds) if (!await requireActiveUser(organizationId, userId, res, 'mentioned user')) return;
-    const record = await CollaborationComment.create({ organizationId, threadId: thread.id, body: value.body, mentionUserIds: value.mentionUserIds, createdBy: req.auth.sub });
-    await Promise.all([
-      activity({ organizationId, resourceType: thread.resourceType, resourceId: thread.resourceId, actorId: req.auth.sub, activityType: 'comment_added', summary: 'A reply was added to a collaboration thread.' }),
-      notify({ organizationId, userIds: value.mentionUserIds, actorId: req.auth.sub, resourceType: thread.resourceType, resourceId: thread.resourceId, notificationType: 'mention', title: 'You were mentioned in a collaboration reply' }),
-      audit(req, 'collaboration_comment', record.id, 'created', { threadId: thread.id, mentionCount: value.mentionUserIds.length }),
-    ]);
+    const record = await sequelize.transaction(async (transaction) => {
+      const created = await CollaborationComment.create({ organizationId, threadId: thread.id, body: value.body, mentionUserIds: value.mentionUserIds, createdBy: req.auth.sub }, { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: thread.resourceType, resourceId: thread.resourceId, actorId: req.auth.sub, activityType: 'comment_added', summary: 'A reply was added to a collaboration thread.', transaction }),
+        notify({ organizationId, userIds: value.mentionUserIds, actorId: req.auth.sub, resourceType: thread.resourceType, resourceId: thread.resourceId, notificationType: 'mention', title: 'You were mentioned in a collaboration reply', transaction }),
+        audit(req, 'collaboration_comment', created.id, 'created', { threadId: thread.id, mentionCount: value.mentionUserIds.length }, transaction),
+      ]);
+      return created;
+    });
     return res.status(201).json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -179,12 +187,15 @@ export async function createActionRequest(req, res, next) {
     const action = await StrategyAction.findOne({ where: { id: req.params.actionId, organizationId } });
     if (!action) return res.status(404).json({ error: 'Strategy action not found.' });
     const recipient = await requireActiveUser(organizationId, value.requestedFromUserId, res, 'request recipient'); if (!recipient) return;
-    const record = await CollaborationRequest.create({ ...value, organizationId, resourceType: 'action', resourceId: action.id, requestedByUserId: req.auth.sub });
-    await Promise.all([
-      activity({ organizationId, resourceType: 'action', resourceId: action.id, actorId: req.auth.sub, activityType: 'request_created', summary: value.title, metadata: { requestType: value.requestType, recipientId: recipient.id } }),
-      notify({ organizationId, userIds: [recipient.id], actorId: req.auth.sub, resourceType: 'action', resourceId: action.id, notificationType: 'request', title: 'A collaboration request needs your input', detail: value.title }),
-      audit(req, 'collaboration_request', record.id, 'created', { actionId: action.id, requestType: value.requestType, recipientId: recipient.id }),
-    ]);
+    const record = await sequelize.transaction(async (transaction) => {
+      const created = await CollaborationRequest.create({ ...value, organizationId, resourceType: 'action', resourceId: action.id, requestedByUserId: req.auth.sub }, { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: 'action', resourceId: action.id, actorId: req.auth.sub, activityType: 'request_created', summary: value.title, metadata: { requestType: value.requestType, recipientId: recipient.id }, transaction }),
+        notify({ organizationId, userIds: [recipient.id], actorId: req.auth.sub, resourceType: 'action', resourceId: action.id, notificationType: 'request', title: 'A collaboration request needs your input', detail: value.title, transaction }),
+        audit(req, 'collaboration_request', created.id, 'created', { actionId: action.id, requestType: value.requestType, recipientId: recipient.id }, transaction),
+      ]);
+      return created;
+    });
     return res.status(201).json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -197,12 +208,14 @@ export async function updateCollaborationRequest(req, res, next) {
     if (!record) return res.status(404).json({ error: 'Collaboration request not found.' });
     if (!isManager(req) && record.requestedFromUserId !== req.auth.sub) return res.status(403).json({ error: 'Only the requested Council member or a workspace manager can update this request.' });
     const completedAt = ['complete', 'declined'].includes(value.status) ? new Date() : null;
-    await record.update({ ...value, completedAt });
-    await Promise.all([
-      activity({ organizationId, resourceType: record.resourceType, resourceId: record.resourceId, actorId: req.auth.sub, activityType: 'request_updated', summary: `${record.title} marked ${value.status.replace(/_/g, ' ')}.`, metadata: { requestId: record.id, status: value.status } }),
-      notify({ organizationId, userIds: [record.requestedByUserId], actorId: req.auth.sub, resourceType: record.resourceType, resourceId: record.resourceId, notificationType: 'request', title: 'A collaboration request was updated', detail: record.title }),
-      audit(req, 'collaboration_request', record.id, 'updated', { status: value.status }),
-    ]);
+    await sequelize.transaction(async (transaction) => {
+      await record.update({ ...value, completedAt }, { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: record.resourceType, resourceId: record.resourceId, actorId: req.auth.sub, activityType: 'request_updated', summary: `${record.title} marked ${value.status.replace(/_/g, ' ')}.`, metadata: { requestId: record.id, status: value.status }, transaction }),
+        notify({ organizationId, userIds: [record.requestedByUserId], actorId: req.auth.sub, resourceType: record.resourceType, resourceId: record.resourceId, notificationType: 'request', title: 'A collaboration request was updated', detail: record.title, transaction }),
+        audit(req, 'collaboration_request', record.id, 'updated', { status: value.status }, transaction),
+      ]);
+    });
     return res.json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -217,12 +230,14 @@ export async function createDependencyHandover(req, res, next) {
     if (recipient.id === req.auth.sub) return res.status(422).json({ error: 'Choose another Council user to receive this handover.' });
     const raci = { responsibleUserId: null, accountableUserId: null, consultedUserIds: [], informedUserIds: [], ...(value.raci || {}) };
     for (const userId of [raci.responsibleUserId, raci.accountableUserId, ...raci.consultedUserIds, ...raci.informedUserIds].filter(Boolean)) if (!await requireActiveUser(organizationId, userId, res, 'RACI participant')) return;
-    await dependency.update({ handoverRequestedBy: req.auth.sub, handoverRequestedTo: recipient.id, handoverStatus: 'requested', handoverResponse: value.detail || null, dueDate: value.dueDate || dependency.dueDate, raci });
-    await Promise.all([
-      activity({ organizationId, resourceType: 'dependency', resourceId: dependency.id, actorId: req.auth.sub, activityType: 'handover_requested', summary: 'A cross-team handover was requested.', metadata: { recipientId: recipient.id } }),
-      notify({ organizationId, userIds: [recipient.id], actorId: req.auth.sub, resourceType: 'dependency', resourceId: dependency.id, notificationType: 'handover', title: 'A dependency handover needs your response', detail: dependency.detail || null }),
-      audit(req, 'action_dependency', dependency.id, 'handover_requested', { recipientId: recipient.id }),
-    ]);
+    await sequelize.transaction(async (transaction) => {
+      await dependency.update({ handoverRequestedBy: req.auth.sub, handoverRequestedTo: recipient.id, handoverStatus: 'requested', handoverResponse: value.detail || null, dueDate: value.dueDate || dependency.dueDate, raci }, { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: 'dependency', resourceId: dependency.id, actorId: req.auth.sub, activityType: 'handover_requested', summary: 'A cross-team handover was requested.', metadata: { recipientId: recipient.id }, transaction }),
+        notify({ organizationId, userIds: [recipient.id], actorId: req.auth.sub, resourceType: 'dependency', resourceId: dependency.id, notificationType: 'handover', title: 'A dependency handover needs your response', detail: dependency.detail || null, transaction }),
+        audit(req, 'action_dependency', dependency.id, 'handover_requested', { recipientId: recipient.id }, transaction),
+      ]);
+    });
     return res.json({ data: plain(dependency) });
   } catch (error) { return next(error); }
 }
@@ -236,12 +251,14 @@ export async function respondDependencyHandover(req, res, next) {
     if (!isManager(req) && dependency.handoverRequestedTo !== req.auth.sub) return res.status(403).json({ error: 'Only the nominated receiving owner or a workspace manager can respond to this handover.' });
     const patch = { handoverStatus: value.handoverStatus, handoverResponse: value.response || null, proposedDueDate: value.proposedDueDate || null };
     if (value.handoverStatus === 'accepted') patch.ownerId = dependency.handoverRequestedTo;
-    await dependency.update(patch);
-    await Promise.all([
-      activity({ organizationId, resourceType: 'dependency', resourceId: dependency.id, actorId: req.auth.sub, activityType: 'handover_responded', summary: `Handover ${value.handoverStatus.replace(/_/g, ' ')}.`, metadata: { status: value.handoverStatus } }),
-      notify({ organizationId, userIds: [dependency.handoverRequestedBy], actorId: req.auth.sub, resourceType: 'dependency', resourceId: dependency.id, notificationType: 'handover', title: 'A dependency handover was updated', detail: value.handoverStatus.replace(/_/g, ' ') }),
-      audit(req, 'action_dependency', dependency.id, 'handover_responded', { status: value.handoverStatus }),
-    ]);
+    await sequelize.transaction(async (transaction) => {
+      await dependency.update(patch, { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: 'dependency', resourceId: dependency.id, actorId: req.auth.sub, activityType: 'handover_responded', summary: `Handover ${value.handoverStatus.replace(/_/g, ' ')}.`, metadata: { status: value.handoverStatus }, transaction }),
+        notify({ organizationId, userIds: [dependency.handoverRequestedBy], actorId: req.auth.sub, resourceType: 'dependency', resourceId: dependency.id, notificationType: 'handover', title: 'A dependency handover was updated', detail: value.handoverStatus.replace(/_/g, ' '), transaction }),
+        audit(req, 'action_dependency', dependency.id, 'handover_responded', { status: value.handoverStatus }, transaction),
+      ]);
+    });
     return res.json({ data: plain(dependency) });
   } catch (error) { return next(error); }
 }
@@ -256,20 +273,23 @@ export async function updateQuarterlyWorkflow(req, res, next) {
     const canSubmit = req.auth.sub === record.submittedBy || req.auth.sub === actionOwner || isManager(req);
     const canReview = isManager(req) || req.auth.sub === record.reviewRequestedFromUserId;
     if (value.workflowStatus === 'submitted_for_review' && !canSubmit) return res.status(403).json({ error: 'Only the submitting contributor, action owner or workspace manager can submit this update for review.' });
-    if (['changes_requested', 'endorsed', 'included_in_report'].includes(value.workflowStatus) && !canReview) return res.status(403).json({ error: 'Only the nominated reviewer or a workspace manager can review this update.' });
+    if (['changes_requested', 'endorsed'].includes(value.workflowStatus) && !canReview) return res.status(403).json({ error: 'Only the nominated reviewer or a workspace manager can review this update.' });
+    if (value.workflowStatus === 'included_in_report' && !isManager(req)) return res.status(403).json({ error: 'Only a workspace manager can include an update in the quarterly report.' });
     if (value.workflowStatus === 'submitted_for_review' && !value.reviewRequestedFromUserId) return res.status(422).json({ error: 'Choose an active reviewer before submitting this update.' });
     if (value.reviewRequestedFromUserId && !await requireActiveUser(organizationId, value.reviewRequestedFromUserId, res, 'reviewer')) return;
     const patch = { workflowStatus: value.workflowStatus, reviewComment: value.reviewComment || null };
     if (value.workflowStatus === 'submitted_for_review') patch.reviewRequestedFromUserId = value.reviewRequestedFromUserId;
     if (['changes_requested', 'endorsed', 'included_in_report'].includes(value.workflowStatus)) { patch.reviewedBy = req.auth.sub; patch.reviewedAt = new Date(); }
     if (value.workflowStatus === 'included_in_report') patch.includedInReportAt = new Date();
-    await record.update(patch);
     const recipients = value.workflowStatus === 'submitted_for_review' ? [value.reviewRequestedFromUserId] : [record.submittedBy];
-    await Promise.all([
-      activity({ organizationId, resourceType: 'quarterly_update', resourceId: record.id, actorId: req.auth.sub, activityType: 'quarterly_workflow_updated', summary: `Quarterly update marked ${value.workflowStatus.replace(/_/g, ' ')}.`, metadata: { actionId: record.actionId, status: value.workflowStatus } }),
-      notify({ organizationId, userIds: recipients, actorId: req.auth.sub, resourceType: 'quarterly_update', resourceId: record.id, notificationType: value.workflowStatus === 'submitted_for_review' ? 'review_requested' : 'request', title: 'A quarterly update workflow changed', detail: record.StrategyAction?.title || null }),
-      audit(req, 'quarterly_action_update', record.id, 'workflow_updated', { workflowStatus: value.workflowStatus }),
-    ]);
+    await sequelize.transaction(async (transaction) => {
+      await record.update(patch, { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: 'quarterly_update', resourceId: record.id, actorId: req.auth.sub, activityType: 'quarterly_workflow_updated', summary: `Quarterly update marked ${value.workflowStatus.replace(/_/g, ' ')}.`, metadata: { actionId: record.actionId, status: value.workflowStatus }, transaction }),
+        notify({ organizationId, userIds: recipients, actorId: req.auth.sub, resourceType: 'quarterly_update', resourceId: record.id, notificationType: value.workflowStatus === 'submitted_for_review' ? 'review_requested' : 'request', title: 'A quarterly update workflow changed', detail: record.StrategyAction?.title || null, transaction }),
+        audit(req, 'quarterly_action_update', record.id, 'workflow_updated', { workflowStatus: value.workflowStatus }, transaction),
+      ]);
+    });
     return res.json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -282,11 +302,14 @@ export async function createPartnerCommitment(req, res, next) {
     if (!action) return res.status(404).json({ error: 'Strategy action not found.' });
     if (value.ownerId && !await requireActiveUser(organizationId, value.ownerId, res, 'commitment owner')) return;
     if (value.stakeholderId && !await StrategyStakeholder.findOne({ where: { id: value.stakeholderId, organizationId, actionId: action.id } })) return res.status(422).json({ error: 'The selected stakeholder is not linked to this strategy action.' });
-    const record = await PartnerCommitment.create({ ...value, organizationId, actionId: action.id });
-    await Promise.all([
-      activity({ organizationId, resourceType: 'action', resourceId: action.id, actorId: req.auth.sub, activityType: 'partner_commitment_added', summary: 'A partner commitment was recorded.', metadata: { commitmentId: record.id, type: record.contributionType } }),
-      audit(req, 'partner_commitment', record.id, 'created', { actionId: action.id, contributionType: record.contributionType }),
-    ]);
+    const record = await sequelize.transaction(async (transaction) => {
+      const created = await PartnerCommitment.create({ ...value, organizationId, actionId: action.id }, { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: 'action', resourceId: action.id, actorId: req.auth.sub, activityType: 'partner_commitment_added', summary: 'A partner commitment was recorded.', metadata: { commitmentId: created.id, type: created.contributionType }, transaction }),
+        audit(req, 'partner_commitment', created.id, 'created', { actionId: action.id, contributionType: created.contributionType }, transaction),
+      ]);
+      return created;
+    });
     return res.status(201).json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -299,11 +322,14 @@ export async function createFundingRoom(req, res, next) {
     if (!action) return res.status(404).json({ error: 'Strategy action not found.' });
     if (value.ownerId && !await requireActiveUser(organizationId, value.ownerId, res, 'funding room owner')) return;
     if (value.fundingPositionId && !await ActionFundingPosition.findOne({ where: { id: value.fundingPositionId, organizationId, actionId: action.id } })) return res.status(422).json({ error: 'The selected funding position is not linked to this strategy action.' });
-    const record = await FundingCollaborationRoom.create({ ...value, organizationId, actionId: action.id });
-    await Promise.all([
-      activity({ organizationId, resourceType: 'action', resourceId: action.id, actorId: req.auth.sub, activityType: 'funding_room_created', summary: 'A funding collaboration room was created.', metadata: { fundingRoomId: record.id } }),
-      audit(req, 'funding_collaboration_room', record.id, 'created', { actionId: action.id }),
-    ]);
+    const record = await sequelize.transaction(async (transaction) => {
+      const created = await FundingCollaborationRoom.create({ ...value, organizationId, actionId: action.id }, { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: 'action', resourceId: action.id, actorId: req.auth.sub, activityType: 'funding_room_created', summary: 'A funding collaboration room was created.', metadata: { fundingRoomId: created.id }, transaction }),
+        audit(req, 'funding_collaboration_room', created.id, 'created', { actionId: action.id }, transaction),
+      ]);
+      return created;
+    });
     return res.status(201).json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -315,11 +341,14 @@ export async function createFundingCheckpoint(req, res, next) {
     const room = await FundingCollaborationRoom.findOne({ where: { id: req.params.roomId, organizationId } });
     if (!room) return res.status(404).json({ error: 'Funding collaboration room not found.' });
     if (value.ownerId && !await requireActiveUser(organizationId, value.ownerId, res, 'checkpoint owner')) return;
-    const record = await FundingRoomCheckpoint.create({ ...value, organizationId, fundingRoomId: room.id });
-    await Promise.all([
-      activity({ organizationId, resourceType: 'funding_room', resourceId: room.id, actorId: req.auth.sub, activityType: 'funding_checkpoint_created', summary: value.title, metadata: { checkpointId: record.id } }),
-      audit(req, 'funding_room_checkpoint', record.id, 'created', { fundingRoomId: room.id }),
-    ]);
+    const record = await sequelize.transaction(async (transaction) => {
+      const created = await FundingRoomCheckpoint.create({ ...value, organizationId, fundingRoomId: room.id }, { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: 'funding_room', resourceId: room.id, actorId: req.auth.sub, activityType: 'funding_checkpoint_created', summary: value.title, metadata: { checkpointId: created.id }, transaction }),
+        audit(req, 'funding_room_checkpoint', created.id, 'created', { fundingRoomId: room.id }, transaction),
+      ]);
+      return created;
+    });
     return res.status(201).json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -331,11 +360,14 @@ export async function createEngagementPlan(req, res, next) {
     const action = await StrategyAction.findOne({ where: { id: req.params.actionId, organizationId } });
     if (!action) return res.status(404).json({ error: 'Strategy action not found.' });
     if (value.ownerId && !await requireActiveUser(organizationId, value.ownerId, res, 'engagement owner')) return;
-    const record = await EngagementPlan.create({ ...value, organizationId, actionId: action.id });
-    await Promise.all([
-      activity({ organizationId, resourceType: 'action', resourceId: action.id, actorId: req.auth.sub, activityType: 'engagement_plan_created', summary: `An engagement plan was recorded at the ${record.participationLevel} level.`, metadata: { engagementPlanId: record.id } }),
-      audit(req, 'engagement_plan', record.id, 'created', { actionId: action.id, participationLevel: record.participationLevel }),
-    ]);
+    const record = await sequelize.transaction(async (transaction) => {
+      const created = await EngagementPlan.create({ ...value, organizationId, actionId: action.id }, { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: 'action', resourceId: action.id, actorId: req.auth.sub, activityType: 'engagement_plan_created', summary: `An engagement plan was recorded at the ${created.participationLevel} level.`, metadata: { engagementPlanId: created.id }, transaction }),
+        audit(req, 'engagement_plan', created.id, 'created', { actionId: action.id, participationLevel: created.participationLevel }, transaction),
+      ]);
+      return created;
+    });
     return res.status(201).json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -350,11 +382,14 @@ export async function createDecisionPack(req, res, next) {
     if (value.ownerId && !await requireActiveUser(organizationId, value.ownerId, res, 'decision pack owner')) return;
     if (value.decisionMakerId && !await requireActiveUser(organizationId, value.decisionMakerId, res, 'decision-maker')) return;
     if (value.actionId && !await StrategyAction.findOne({ where: { id: value.actionId, organizationId } })) return res.status(422).json({ error: 'The selected action is not available in this Council workspace.' });
-    const record = await DecisionPack.create({ ...value, organizationId, actionId: value.actionId || (value.sourceType === 'action' ? value.sourceId : null) });
-    await Promise.all([
-      activity({ organizationId, resourceType: 'decision', resourceId: record.id, actorId: req.auth.sub, activityType: 'decision_pack_created', summary: record.title, metadata: { sourceType: value.sourceType, sourceId: value.sourceId } }),
-      audit(req, 'decision_pack', record.id, 'created', { sourceType: value.sourceType, sourceId: value.sourceId }),
-    ]);
+    const record = await sequelize.transaction(async (transaction) => {
+      const created = await DecisionPack.create({ ...value, organizationId, actionId: value.actionId || (value.sourceType === 'action' ? value.sourceId : null) }, { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: 'decision', resourceId: created.id, actorId: req.auth.sub, activityType: 'decision_pack_created', summary: created.title, metadata: { sourceType: value.sourceType, sourceId: value.sourceId }, transaction }),
+        audit(req, 'decision_pack', created.id, 'created', { sourceType: value.sourceType, sourceId: value.sourceId }, transaction),
+      ]);
+      return created;
+    });
     return res.status(201).json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -382,12 +417,15 @@ export async function createReviewPack(req, res, next) {
     if (value.reportingPeriodId && !await QuarterlyReportingPeriod.findOne({ where: { id: value.reportingPeriodId, organizationId, ...(value.strategyId ? { strategyId: value.strategyId } : {}) } })) return res.status(422).json({ error: 'The selected reporting period is not available for this Council strategy.' });
     if (value.ownerId && !await requireActiveUser(organizationId, value.ownerId, res, 'review pack owner')) return;
     for (const item of value.items) if (!await ensureResource(organizationId, item.resourceType, item.resourceId)) return res.status(422).json({ error: 'Every Review Pack item must be an active Council record.' });
-    const record = await ReviewPack.create({ organizationId, strategyId: value.strategyId || null, reportingPeriodId: value.reportingPeriodId || null, ownerId: value.ownerId || req.auth.sub, template: value.template, title: value.title, purpose: value.purpose || null, desiredOutcome: value.desiredOutcome || null, executiveSummary: value.executiveSummary || null, meetingAt: value.meetingAt || null, audience: value.audience || null, status: 'draft', internalOnly: true });
-    if (value.items.length) await ReviewPackItem.bulkCreate(value.items.map((item) => ({ ...item, organizationId, reviewPackId: record.id })));
-    await Promise.all([
-      activity({ organizationId, resourceType: 'review_pack', resourceId: record.id, actorId: req.auth.sub, activityType: 'review_pack_created', summary: record.title, metadata: { template: record.template, itemCount: value.items.length, internalOnly: true } }),
-      audit(req, 'review_pack', record.id, 'created', { template: record.template, itemCount: value.items.length, internalOnly: true }),
-    ]);
+    const record = await sequelize.transaction(async (transaction) => {
+      const created = await ReviewPack.create({ organizationId, strategyId: value.strategyId || null, reportingPeriodId: value.reportingPeriodId || null, ownerId: value.ownerId || req.auth.sub, template: value.template, title: value.title, purpose: value.purpose || null, desiredOutcome: value.desiredOutcome || null, executiveSummary: value.executiveSummary || null, meetingAt: value.meetingAt || null, audience: value.audience || null, status: 'draft', internalOnly: true }, { transaction });
+      if (value.items.length) await ReviewPackItem.bulkCreate(value.items.map((item) => ({ ...item, organizationId, reviewPackId: created.id })), { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: 'review_pack', resourceId: created.id, actorId: req.auth.sub, activityType: 'review_pack_created', summary: created.title, metadata: { template: created.template, itemCount: value.items.length, internalOnly: true }, transaction }),
+        audit(req, 'review_pack', created.id, 'created', { template: created.template, itemCount: value.items.length, internalOnly: true }, transaction),
+      ]);
+      return created;
+    });
     return res.status(201).json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -421,11 +459,14 @@ export async function createReviewPackQuestion(req, res, next) {
     const organizationId = req.tenant.organizationId;
     const pack = await ReviewPack.findOne({ where: { id: req.params.reviewPackId, organizationId } });
     if (!pack) return res.status(404).json({ error: 'Review Pack not found.' });
-    const record = await ReviewPackQuestion.create({ organizationId, reviewPackId: pack.id, askedBy: req.auth.sub, question: value.question });
-    await Promise.all([
-      activity({ organizationId, resourceType: 'review_pack', resourceId: pack.id, actorId: req.auth.sub, activityType: 'review_question_added', summary: 'A pre-reading question was added.' }),
-      audit(req, 'review_pack_question', record.id, 'created', { reviewPackId: pack.id }),
-    ]);
+    const record = await sequelize.transaction(async (transaction) => {
+      const created = await ReviewPackQuestion.create({ organizationId, reviewPackId: pack.id, askedBy: req.auth.sub, question: value.question }, { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: 'review_pack', resourceId: pack.id, actorId: req.auth.sub, activityType: 'review_question_added', summary: 'A pre-reading question was added.', transaction }),
+        audit(req, 'review_pack_question', created.id, 'created', { reviewPackId: pack.id }, transaction),
+      ]);
+      return created;
+    });
     return res.status(201).json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -438,12 +479,15 @@ export async function createReviewPackOutcome(req, res, next) {
     if (!pack) return res.status(404).json({ error: 'Review Pack not found.' });
     if (value.ownerId && !await requireActiveUser(organizationId, value.ownerId, res, 'outcome owner')) return;
     if (value.resourceType && !await ensureResource(organizationId, value.resourceType, value.resourceId)) return res.status(422).json({ error: 'The linked outcome record is not available in this Council workspace.' });
-    const record = await ReviewPackOutcome.create({ ...value, organizationId, reviewPackId: pack.id, recordedBy: req.auth.sub });
-    await Promise.all([
-      activity({ organizationId, resourceType: 'review_pack', resourceId: pack.id, actorId: req.auth.sub, activityType: 'review_outcome_recorded', summary: value.outcome, metadata: { outcomeType: value.outcomeType, resourceType: value.resourceType, resourceId: value.resourceId } }),
-      value.ownerId ? notify({ organizationId, userIds: [value.ownerId], actorId: req.auth.sub, resourceType: 'review_pack', resourceId: pack.id, notificationType: 'assignment', title: 'A Review Pack follow-up was assigned', detail: value.outcome }) : Promise.resolve(),
-      audit(req, 'review_pack_outcome', record.id, 'created', { reviewPackId: pack.id, outcomeType: value.outcomeType }),
-    ]);
+    const record = await sequelize.transaction(async (transaction) => {
+      const created = await ReviewPackOutcome.create({ ...value, organizationId, reviewPackId: pack.id, recordedBy: req.auth.sub }, { transaction });
+      await Promise.all([
+        activity({ organizationId, resourceType: 'review_pack', resourceId: pack.id, actorId: req.auth.sub, activityType: 'review_outcome_recorded', summary: value.outcome, metadata: { outcomeType: value.outcomeType, resourceType: value.resourceType, resourceId: value.resourceId }, transaction }),
+        value.ownerId ? notify({ organizationId, userIds: [value.ownerId], actorId: req.auth.sub, resourceType: 'review_pack', resourceId: pack.id, notificationType: 'assignment', title: 'A Review Pack follow-up was assigned', detail: value.outcome, transaction }) : Promise.resolve(),
+        audit(req, 'review_pack_outcome', created.id, 'created', { reviewPackId: pack.id, outcomeType: value.outcomeType }, transaction),
+      ]);
+      return created;
+    });
     return res.status(201).json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -453,9 +497,12 @@ export async function createWatch(req, res, next) {
     const value = validate(watchSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
     if (!await ensureResource(organizationId, value.resourceType, value.resourceId)) return res.status(422).json({ error: 'The selected record is not available in this Council workspace.' });
-    const [record] = await UserWatch.findOrCreate({ where: { organizationId, userId: req.auth.sub, resourceType: value.resourceType, resourceId: value.resourceId }, defaults: { deliveryPreference: value.deliveryPreference, isActive: true } });
-    if (!record.isActive || record.deliveryPreference !== value.deliveryPreference) await record.update({ deliveryPreference: value.deliveryPreference, isActive: true });
-    await audit(req, 'user_watch', record.id, 'created_or_updated', { resourceType: value.resourceType, resourceId: value.resourceId, deliveryPreference: value.deliveryPreference });
+    const [record] = await sequelize.transaction(async (transaction) => {
+      const result = await UserWatch.findOrCreate({ where: { organizationId, userId: req.auth.sub, resourceType: value.resourceType, resourceId: value.resourceId }, defaults: { deliveryPreference: value.deliveryPreference, isActive: true }, transaction });
+      if (!result[0].isActive || result[0].deliveryPreference !== value.deliveryPreference) await result[0].update({ deliveryPreference: value.deliveryPreference, isActive: true }, { transaction });
+      await audit(req, 'user_watch', result[0].id, 'created_or_updated', { resourceType: value.resourceType, resourceId: value.resourceId, deliveryPreference: value.deliveryPreference }, transaction);
+      return result;
+    });
     return res.status(201).json({ data: plain(record) });
   } catch (error) { return next(error); }
 }
@@ -464,8 +511,10 @@ export async function removeWatch(req, res, next) {
   try {
     const record = await UserWatch.findOne({ where: { id: req.params.watchId, organizationId: req.tenant.organizationId, userId: req.auth.sub } });
     if (!record) return res.status(404).json({ error: 'Watch record not found.' });
-    await record.update({ isActive: false });
-    await audit(req, 'user_watch', record.id, 'disabled', {});
+    await sequelize.transaction(async (transaction) => {
+      await record.update({ isActive: false }, { transaction });
+      await audit(req, 'user_watch', record.id, 'disabled', {}, transaction);
+    });
     return res.status(204).end();
   } catch (error) { return next(error); }
 }
