@@ -30,8 +30,20 @@ function issueSession(res, user, elevatedAt = null) {
   res.clearCookie('civicpath_mfa_pending', cookieOptions());
 }
 function issueMfaPending(res, user, purpose) {
-  const token = jwt.sign({ sub: user.id, organizationId: user.organizationId, role: user.role, scope: 'mfa_pending', purpose }, env.jwtSecret, { expiresIn: '10m' });
+  const token = jwt.sign({ sub: user.id, organizationId: user.organizationId, role: user.role, sessionVersion: user.sessionVersion || 0, scope: 'mfa_pending', purpose }, env.jwtSecret, { expiresIn: '10m' });
   res.cookie('civicpath_mfa_pending', token, cookieOptions());
+}
+
+async function pendingMfaUser(req) {
+  const user = await User.findByPk(req.auth.sub);
+  if (!user
+    || user.status !== 'active'
+    || user.role !== 'platform_admin'
+    || user.organizationId !== req.auth.organizationId
+    || Number(user.sessionVersion || 0) !== Number(req.auth.sessionVersion || 0)) {
+    return null;
+  }
+  return user;
 }
 async function audit(user, action, req, metadata = {}) {
   return AuditLog.create({ organizationId: user.organizationId, userId: user.id, entityType: 'authentication', entityId: user.id, action, metadata, ipAddress: req.ip }).catch(() => null);
@@ -70,8 +82,8 @@ export async function login(req, res, next) {
 export async function beginMfaSetup(req, res, next) {
   try {
     if (req.auth.purpose !== 'setup') return res.status(403).json({ error: 'Authenticator setup is not available for this session.' });
-    const user = await User.findByPk(req.auth.sub);
-    if (!user || user.role !== 'platform_admin') return res.status(403).json({ error: 'System Administrator access is required.' });
+    const user = await pendingMfaUser(req);
+    if (!user) return res.status(401).json({ error: 'Your MFA session is no longer valid. Please sign in again.' });
     // Reuse a pending (unconfirmed) secret so repeated setup calls show the same QR code instead of invalidating the one already scanned.
     let base32 = !user.mfaEnabled && user.mfaSecretEncrypted ? decryptConfiguration(user.mfaSecretEncrypted).secret : null;
     if (!base32) {
@@ -89,9 +101,10 @@ export function mfaPending(req, res) {
 
 export async function confirmMfaSetup(req, res, next) {
   try {
+    if (req.auth.purpose !== 'setup') return res.status(403).json({ error: 'Authenticator setup is not available for this session.' });
     const { value, error } = codeSchema.validate(req.body);
     if (error) return res.status(422).json({ error: error.message });
-    const user = await User.findByPk(req.auth.sub);
+    const user = await pendingMfaUser(req);
     const secret = user?.mfaSecretEncrypted ? decryptConfiguration(user.mfaSecretEncrypted).secret : null;
     if (!user || !secret || !verifyTotp({ secret, code: value.code })) return res.status(422).json({ error: 'That authenticator code could not be verified. Please try again.' });
     const recoveryCodes = createRecoveryCodes();
@@ -104,9 +117,10 @@ export async function confirmMfaSetup(req, res, next) {
 
 export async function verifyMfaLogin(req, res, next) {
   try {
+    if (req.auth.purpose !== 'login') return res.status(403).json({ error: 'Authenticator verification is not available for this session.' });
     const { value, error } = codeSchema.validate(req.body);
     if (error) return res.status(422).json({ error: error.message });
-    const user = await User.findByPk(req.auth.sub);
+    const user = await pendingMfaUser(req);
     if (!user || !user.mfaEnabled || !(await verifyAuthenticator(user, value.code)).valid) {
       if (user) await audit(user, 'auth_mfa_failed', req);
       return res.status(401).json({ error: 'The authenticator or recovery code is not valid.' });

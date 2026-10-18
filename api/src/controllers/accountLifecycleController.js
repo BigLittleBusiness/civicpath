@@ -151,14 +151,22 @@ export async function resetPassword(req, res, next) {
   try {
     const { value, error } = resetConfirmSchema.validate(req.body, { stripUnknown: true });
     if (error) return res.status(422).json({ error: error.message });
-    const token = await PasswordResetToken.findOne({ where: { tokenHash: hashToken(value.token), consumedAt: null, expiresAt: { [Op.gt]: new Date() } }, include: [{ model: User }] });
-    if (!token?.User || token.User.status !== 'active') return res.status(422).json({ error: 'That password reset link is invalid or has expired. Request a new reset link.' });
-    await sequelize.transaction(async (transaction) => {
-      await token.User.update({ passwordHash: await bcrypt.hash(value.password, 12), sessionVersion: token.User.sessionVersion + 1 }, { transaction });
+    const completed = await sequelize.transaction(async (transaction) => {
+      const token = await PasswordResetToken.findOne({
+        where: { tokenHash: hashToken(value.token), consumedAt: null, expiresAt: { [Op.gt]: new Date() } },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!token) return false;
+      const user = await User.findByPk(token.userId, { transaction, lock: transaction.LOCK.UPDATE });
+      if (!user || user.status !== 'active') return false;
+      await user.update({ passwordHash: await bcrypt.hash(value.password, 12), sessionVersion: Number(user.sessionVersion || 0) + 1 }, { transaction });
       await token.update({ consumedAt: new Date() }, { transaction });
-      await PasswordResetToken.update({ consumedAt: new Date() }, { where: { userId: token.User.id, consumedAt: null }, transaction });
-      await auditRegistration({ organizationId: token.User.organizationId, userId: token.User.id, action: 'password_reset_completed', req });
+      await PasswordResetToken.update({ consumedAt: new Date() }, { where: { userId: user.id, consumedAt: null }, transaction });
+      await auditRegistration({ organizationId: user.organizationId, userId: user.id, action: 'password_reset_completed', req });
+      return true;
     });
+    if (!completed) return res.status(422).json({ error: 'That password reset link is invalid or has expired. Request a new reset link.' });
     return res.json({ data: { reset: true } });
   } catch (error) { return next(error); }
 }

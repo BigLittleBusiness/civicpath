@@ -11,6 +11,8 @@ import { hashToken } from '../src/services/accountNotifications.js';
 const baseUrl = process.env.PEOPLE_ACCESS_TEST_BASE_URL || 'http://127.0.0.1:3017/v1';
 const suffix = crypto.randomUUID().slice(0, 8);
 const email = `people-access-${suffix}@example.com`;
+const administratorPassword = `test-${crypto.randomBytes(30).toString('base64url')}`;
+const invitationPassword = `test-${crypto.randomBytes(30).toString('base64url')}`;
 let organization;
 let plan;
 let administrator;
@@ -56,7 +58,7 @@ try {
   await sequelize.authenticate();
   plan = await ProductPlan.create({ code: `people-access-${suffix}`, name: 'People Access Test', product: 'civicpath', annualPriceAud: 1, workflowUserLimit: 2, activeProjectLimit: 1, activeGrantLimit: 1, features: {} });
   organization = await Organization.create({ name: `People Access Test Council ${suffix}`, slug: `people-access-${suffix}`, country: 'AU', organisationType: 'council', planCode: plan.code, status: 'active' });
-  administrator = await User.create({ organizationId: organization.id, email: `admin-${suffix}@example.com`, firstName: 'Admin', lastName: 'Tester', passwordHash: await bcrypt.hash('PeopleAccessTestPassword!', 12), role: 'org_admin', status: 'active' });
+  administrator = await User.create({ organizationId: organization.id, email: `admin-${suffix}@example.com`, firstName: 'Admin', lastName: 'Tester', passwordHash: await bcrypt.hash(administratorPassword, 12), role: 'org_admin', status: 'active' });
   await Subscription.create({ organizationId: organization.id, planId: plan.id, status: 'active', entitlements: { civicpathCore: true } });
   const headers = authHeaders(administrator);
 
@@ -85,12 +87,12 @@ try {
   const invitationPreview = await request(`/auth/invitations/accept?token=${encodeURIComponent(knownToken)}`);
   assert.equal(invitationPreview.email, email);
   assert.equal(invitationPreview.role, 'contributor');
-  await request('/auth/invitations/accept', { method: 'POST', body: JSON.stringify({ token: knownToken, password: 'AcceptedInvitationPassword!' }) });
-  await requestFailure('/auth/invitations/accept', 422, { method: 'POST', body: JSON.stringify({ token: knownToken, password: 'AcceptedInvitationPassword!' }) });
+  await request('/auth/invitations/accept', { method: 'POST', body: JSON.stringify({ token: knownToken, password: invitationPassword }) });
+  await requestFailure('/auth/invitations/accept', 422, { method: 'POST', body: JSON.stringify({ token: knownToken, password: invitationPassword }) });
 
   invitedUser = await User.findByPk(invitedUser.id);
   assert.equal(invitedUser.status, 'active');
-  assert.equal(await bcrypt.compare('AcceptedInvitationPassword!', invitedUser.passwordHash), true, 'Invitation acceptance must set the chosen password.');
+  assert.equal(await bcrypt.compare(invitationPassword, invitedUser.passwordHash), true, 'Invitation acceptance must set the chosen password.');
   project = await CivicProject.create({ organizationId: organization.id, ownerId: invitedUser.id, name: `People Access handover ${suffix}`, category: 'strategic_planning', stage: 'scoping' });
   await requestFailure(`/workspace/members/${invitedUser.id}`, 422, { method: 'DELETE', headers, body: JSON.stringify({ reason: 'Requires handover.' }) });
   await request(`/workspace/members/${invitedUser.id}/role`, { method: 'PATCH', headers, body: JSON.stringify({ role: 'org_admin' }) });

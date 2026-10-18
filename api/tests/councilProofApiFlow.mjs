@@ -4,7 +4,7 @@ import { sequelize } from '../src/config/database.js';
 import { env } from '../src/config/env.js';
 
 const baseUrl = process.env.CIVICPATH_TEST_URL || 'http://127.0.0.1:3017/v1';
-const demo = { email: 'demo@civicpath.com.au', password: 'CivicPathDemo2026!' };
+const demo = { email: process.env.CIVICPATH_DEMO_TEST_EMAIL, password: process.env.CIVICPATH_DEMO_TEST_PASSWORD };
 let cookie = '';
 let createdProjectId;
 
@@ -18,6 +18,7 @@ async function request(path, options = {}) {
 }
 
 try {
+  if (!demo.email || !demo.password) throw new Error('Set CIVICPATH_DEMO_TEST_EMAIL and CIVICPATH_DEMO_TEST_PASSWORD before running this controlled smoke test.');
   await sequelize.authenticate();
   const login = await request('/auth/login', { method: 'POST', body: JSON.stringify(demo) });
   if (login.data?.user?.role !== 'org_admin') throw new Error('Demo Council administrator sign-in failed.');

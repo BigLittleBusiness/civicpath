@@ -15,13 +15,22 @@ export async function requireAuth(req, res, next) {
   }
 }
 
-export function requireMfaPending(req, res, next) {
+export async function requireMfaPending(req, res, next) {
   const token = req.cookies?.civicpath_mfa_pending;
   if (!token) return res.status(401).json({ error: 'A pending MFA session is required.' });
   try {
     const payload = jwt.verify(token, env.jwtSecret);
-    if (payload.scope !== 'mfa_pending') throw new Error('Invalid pending MFA scope');
-    req.auth = payload;
+    if (payload.scope !== 'mfa_pending' || !['setup', 'login'].includes(payload.purpose)) throw new Error('Invalid pending MFA scope');
+    const user = await User.findByPk(payload.sub, { attributes: ['id', 'organizationId', 'role', 'status', 'sessionVersion'] });
+    if (!user
+      || user.status !== 'active'
+      || user.role !== 'platform_admin'
+      || user.organizationId !== payload.organizationId
+      || user.role !== payload.role
+      || Number(user.sessionVersion || 0) !== Number(payload.sessionVersion || 0)) {
+      throw new Error('Pending MFA session is no longer valid');
+    }
+    req.auth = { ...payload, sessionVersion: user.sessionVersion };
     return next();
   } catch {
     return res.status(401).json({ error: 'Your MFA session is no longer valid. Please sign in again.' });
