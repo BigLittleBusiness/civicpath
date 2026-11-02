@@ -8,6 +8,7 @@ import { PrivilegedActionModal } from '../components/PrivilegedActionModal';
 import { LeadRoutingPanel } from '../components/LeadRoutingPanel';
 import { PublicEnquiriesPanel } from '../components/PublicEnquiriesPanel';
 import { NotificationDeliveryPanel } from '../components/NotificationDeliveryPanel';
+import { TopHelpPanel } from '../components/RoleHelpPanel';
 import { formatAud, formatCents, formatDate, formatDateTime, initials, statusLabel } from '../lib/billingFormat';
 import './SystemAdminPage.css';
 
@@ -125,6 +126,7 @@ export default function SystemAdminPage() {
 
     {loading ? <div className="admin-loading"><span className="loader"/>Loading System Admin workspace…</div> : <>
       {activeTab === 'Command centre' && <section className="admin-section">
+        <TopHelpPanel role="platform_admin"/>
         <div className="admin-metrics">
           <Metric label="Annual recurring revenue" value={formatAud(metrics.annualRecurringRevenueAud || 0)} note="Active annual plans, excl. GST" tone="is-feature"/>
           <Metric label="Collected · last 30 days" value={formatCents(metrics.collectedLast30DaysCents || 0)} note="Paid Stripe invoices, incl. GST"/>

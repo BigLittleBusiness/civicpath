@@ -12,6 +12,7 @@ const paths = {
   search: <><circle cx="10.8" cy="10.8" r="6"/><path d="m16 16 4.5 4.5"/></>,
   bell: <><path d="M18 10a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 22h4"/></>,
   upload: <><path d="M12 16V4m0 0L8 8m4-4 4 4"/><path d="M5 15v4h14v-4"/></>,
+  help: <><circle cx="12" cy="12" r="8.5"/><path d="M9.7 9.5a2.4 2.4 0 1 1 4.1 1.7c-1.2 1.1-1.8 1.6-1.8 3.1"/><path d="M12 17.5h.01"/></>,
   chevron: <path d="m9 18 6-6-6-6"/>,
   external: <><path d="M14 4h6v6M11 13l9-9M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"/></>,
 };

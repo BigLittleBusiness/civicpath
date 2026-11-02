@@ -4,8 +4,8 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { Icon } from './Icon';
 import { useAuth } from '../features/AuthContext';
 
-const councilNavItems = [['/dashboard', 'Overview', 'grid'], ['/strategy-delivery', 'Strategy delivery', 'report'], ['/collaboration', 'My collaboration', 'bell'], ['/portfolio', 'Project portfolio', 'folder'], ['/funding', 'Funding pathways', 'fund'], ['/grants', 'Grant lifecycle', 'check'], ['/reports', 'Reports', 'report']];
-const adminNavItems = [['/admin', 'System Admin', 'grid']];
+const councilNavItems = [['/dashboard', 'Overview', 'grid'], ['/strategy-delivery', 'Strategy delivery', 'report'], ['/collaboration', 'My collaboration', 'bell'], ['/portfolio', 'Project portfolio', 'folder'], ['/funding', 'Funding pathways', 'fund'], ['/grants', 'Grant lifecycle', 'check'], ['/reports', 'Reports', 'report'], ['/help', 'Help & guidance', 'help']];
+const adminNavItems = [['/admin', 'System Admin', 'grid'], ['/help', 'Help & guidance', 'help']];
 
 export function AppShell({ children }) {
   const [collapsed, setCollapsed] = useState(false); const location = useLocation(); const { user, signOut } = useAuth(); const isPlatformAdmin = user?.role === 'platform_admin'; const navItems = isPlatformAdmin ? adminNavItems : councilNavItems; const label = navItems.find(([path]) => location.pathname.startsWith(path))?.[1] || (location.pathname.startsWith('/settings') ? 'Workspace settings' : isPlatformAdmin ? 'System Admin' : 'Overview'); const workspaceName = user?.organisationName || 'Council workspace'; const workspaceInitials = workspaceName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase(); const initials = `${user?.firstName?.[0] || ''}${user?.lastName?.[0] || ''}` || 'CP';

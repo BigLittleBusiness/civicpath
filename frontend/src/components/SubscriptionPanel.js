@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Icon } from './Icon';
+import { ContextualHelpLink } from './RoleHelpPanel';
 import { formatAud, formatCents, formatDate, statusLabel } from '../lib/billingFormat';
 import './SubscriptionPanel.css';
 
@@ -38,14 +39,14 @@ export function SubscriptionPanel() {
   const afterCredit = selectedPlan ? selectedPlan[2] - (conversion?.creditAud || 0) : 0;
 
   return <section className="settings-card sub-panel">
-    <div className="sub-panel-head">
-      <div>
-        <p className="card-eyebrow">Subscription</p>
-        <h3>{sub?.planName || 'No active subscription'}</h3>
-        {sub ? <span className={`sub-pill is-${ended && sub.status === 'active' ? 'expired' : sub.status}`}>{statusLabel(ended && sub.status === 'active' ? 'expired' : sub.status)}</span> : null}
+      <div className="sub-panel-head">
+        <div>
+          <p className="card-eyebrow">Subscription</p>
+          <h3>{sub?.planName || 'No active subscription'}</h3>
+          {sub ? <span className={`sub-pill is-${ended && sub.status === 'active' ? 'expired' : sub.status}`}>{statusLabel(ended && sub.status === 'active' ? 'expired' : sub.status)}</span> : null}
+        </div>
+      <div className="subscription-help-price">{pricing ? <div className="sub-panel-price"><strong>{formatAud(pricing.excludingGst)}</strong><span>{sub?.billingInterval === 'one_off' ? 'one-off, excl. GST' : 'per year, excl. GST'}</span><small>{gstNote}</small></div> : null}<ContextualHelpLink topic="subscription billing invoices payment details or Council Proof credit" label="Billing help"/></div>
       </div>
-      {pricing ? <div className="sub-panel-price"><strong>{formatAud(pricing.excludingGst)}</strong><span>{sub?.billingInterval === 'one_off' ? 'one-off, excl. GST' : 'per year, excl. GST'}</span><small>{gstNote}</small></div> : null}
-    </div>
 
     {sub ? <div className="sub-panel-period">
       <div><span>Started</span><b>{formatDate(sub.startsAt)}</b></div>

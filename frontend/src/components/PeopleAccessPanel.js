@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import { ContextualHelpLink } from './RoleHelpPanel';
 
 const blankInvitation = { firstName: '', lastName: '', email: '', role: 'contributor' };
 const dateLabel = (value) => value ? new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value)) : '—';
@@ -82,7 +83,7 @@ export function PeopleAccessPanel() {
 
   return <>
     <section className="settings-card people-access-card">
-      <div className="people-access-heading"><div><p className="card-eyebrow">People & access</p><h3>Keep the right people connected to delivery.</h3><p className="card-copy">Organisation Administrators control access. Every invitation, role change, reassignment and removal is recorded in the Council audit trail.</p></div><button className="primary-button" type="button" onClick={() => { setInvitation(blankInvitation); setInviteOpen(true); }}>Invite Council user</button></div>
+      <div className="people-access-heading"><div><p className="card-eyebrow">People & access</p><h3>Keep the right people connected to delivery.</h3><p className="card-copy">Organisation Administrators control access. Every invitation, role change, reassignment and removal is recorded in the Council audit trail.</p></div><div className="people-access-actions"><ContextualHelpLink topic="invite a colleague manage Council user access or assign a role"/><button className="primary-button" type="button" onClick={() => { setInvitation(blankInvitation); setInviteOpen(true); }}>Invite Council user</button></div></div>
       <div className="seat-summary"><div><span>Plan</span><strong>{seats?.planCode ? seats.planCode.replace(/-/g, ' ') : 'Current plan'}</strong></div><div><span>People with access or pending access</span><strong>{seats?.workflowSeatsUsed ?? 0}{seats?.workflowUserLimit === null ? ' · no limit recorded' : ` of ${seats.workflowUserLimit}`}</strong></div><div><span>Available invitations</span><strong>{seats?.workflowSeatsAvailable === null ? 'Plan-based' : seats.workflowSeatsAvailable}</strong></div></div>
       <div className="people-access-guardrail"><b>Continuity safeguard</b><span>Keep at least two active Organisation Administrators. CivicPath will not remove or demote the final active administrator.</span></div>
       <div className="member-table" role="region" aria-label="Council users">

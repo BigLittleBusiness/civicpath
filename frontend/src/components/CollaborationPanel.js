@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { useAuth } from '../features/AuthContext';
+import { ContextualHelpLink } from './RoleHelpPanel';
 import './collaboration.css';
 
 const name = (user) => user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Council user' : 'Unassigned';
@@ -24,7 +25,7 @@ export function CollaborationPanel({ action, team, refreshAction }) {
   const send = async (path, payload, success, method = 'post') => { try { await api[method](path, payload); toast.success(success); setNotice(success); await load(); if (refreshAction) await refreshAction(); return true; } catch (error) { const message = error.response?.data?.error || 'That change could not be saved.'; toast.error(message); setNotice(message); return false; } };
   if (!action) return null;
   return <section className="collaboration-panel" aria-label="Internal collaboration workspace">
-    <div className="collaboration-head"><div><p className="card-eyebrow">Internal collaboration</p><h3>People, commitments and review-ready context</h3><p>This workspace is visible only to authorised users in this Council tenant. It does not create public links or external partner access.</p></div><button type="button" className="secondary-button" disabled={loading} onClick={() => load()}>{loading ? 'Loading…' : 'Refresh'}</button></div>
+    <div className="collaboration-head"><div><p className="card-eyebrow">Internal collaboration</p><h3>People, commitments and review-ready context</h3><p>This workspace is visible only to authorised users in this Council tenant. It does not create public links or external partner access.</p></div><div className="collaboration-head-actions"><ContextualHelpLink topic="collaboration contribution request Decision Pack Review Pack or partner commitment"/><button type="button" className="secondary-button" disabled={loading} onClick={() => load()}>{loading ? 'Loading…' : 'Refresh'}</button></div></div>
     {notice && <p className="collaboration-notice" aria-live="polite">{notice}</p>}
     <div className="collaboration-summary"><span><b>{data?.participants?.length || 0}</b> participants</span><span><b>{data?.requests?.filter((item) => ['open', 'changes_requested'].includes(item.status)).length || 0}</b> open requests</span><span><b>{data?.watcherCount || 0}</b> watching</span><button type="button" className="text-action" onClick={() => send('/collaboration/watches', { resourceType: 'action', resourceId: action.id, deliveryPreference: 'daily_digest' }, 'This action is now in your daily digest.')}>{data?.watching ? 'Watching' : 'Watch this action'}</button></div>
     <div className="collaboration-grid">
