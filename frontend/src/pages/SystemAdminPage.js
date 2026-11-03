@@ -1,5 +1,5 @@
 /* CivicPath System Admin UI — concise operating console for high-trust platform work. */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { api } from '../lib/api';
 import { Icon } from '../components/Icon';
@@ -8,6 +8,7 @@ import { PrivilegedActionModal } from '../components/PrivilegedActionModal';
 import { LeadRoutingPanel } from '../components/LeadRoutingPanel';
 import { PublicEnquiriesPanel } from '../components/PublicEnquiriesPanel';
 import { NotificationDeliveryPanel } from '../components/NotificationDeliveryPanel';
+import { TenantLifecycleAdminPanel } from '../components/TenantLifecycleAdminPanel';
 import { TopHelpPanel } from '../components/RoleHelpPanel';
 import { formatAud, formatCents, formatDate, formatDateTime, initials, statusLabel } from '../lib/billingFormat';
 import './SystemAdminPage.css';
@@ -47,6 +48,15 @@ function AccessPeriod({ subscription }) {
 export default function SystemAdminPage() {
   const [activeTab, setActiveTab] = useState(tabs[0]);
   const [overview, setOverview] = useState(null);
+  const [readiness, setReadiness] = useState(null); const [readinessError, setReadinessError] = useState('');
+  const loadReadiness = useCallback(async () => {
+    setReadinessError('');
+    try { const response = await api.get('/health/ready'); setReadiness(response.data.data); }
+    catch (error) {
+      if (error.response?.data?.data?.service === 'civicpath-api') setReadiness(error.response.data.data);
+      else { setReadiness(null); setReadinessError('Readiness could not be checked. Retry; configuration alone is not operational verification.'); }
+    }
+  }, []);
   const [customers, setCustomers] = useState([]);
   const [supportCases, setSupportCases] = useState([]);
   const [plans, setPlans] = useState([]);
@@ -59,8 +69,9 @@ export default function SystemAdminPage() {
   const [customerDetail, setCustomerDetail] = useState(null);
   const [privilegedAction, setPrivilegedAction] = useState(null);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setRefreshing(true);
+    await loadReadiness();
     try {
       const [overviewResult, customersResult, supportResult, plansResult, stripeResult] = await Promise.all([
         api.get('/admin/overview'), api.get('/admin/customers'), api.get('/admin/support-cases'), api.get('/admin/plans'), api.get('/admin/billing/stripe'),
@@ -73,9 +84,9 @@ export default function SystemAdminPage() {
     } catch (error) {
       toast.error(error.response?.data?.error || 'System Admin information could not be loaded.');
     } finally { setLoading(false); setRefreshing(false); }
-  };
+  }, [loadReadiness]);
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => { refresh(); }, [refresh]);
 
   const openCases = useMemo(() => supportCases.filter((item) => !['resolved', 'closed'].includes(item.status)), [supportCases]);
   const filterCounts = useMemo(() => Object.fromEntries(councilFilters.map(([key, , test]) => [key, customers.filter(test).length])), [customers]);
@@ -137,7 +148,7 @@ export default function SystemAdminPage() {
         </div>
         <div className="admin-two-col">
           <section className="admin-card"><div className="admin-card-head"><div><p className="card-eyebrow">Act next</p><h3>Operational queue</h3></div><span className="quiet-badge">Prioritised</span></div><div className="admin-queue">{overview?.actionQueue?.length ? overview.actionQueue.map((item, index) => <div key={`${item.type}-${index}`} className={`queue-item is-${item.priority}`}><i/><b>{item.title}</b><span>{item.type.replaceAll('_', ' ')}</span></div>) : <EmptyCase title="Nothing needs action" copy="Billing, support and conversion signals will appear here."/>}</div></section>
-          <section className="admin-card"><div className="admin-card-head"><div><p className="card-eyebrow">Platform posture</p><h3>Readiness checks</h3></div></div><div className="posture-list"><p><i className="is-good"/>Tenant-scoped API access and audit logging <span>Active</span></p><p><i className={metrics.stripeConfigured ? 'is-good' : 'is-pending'}/>Stripe billing configuration <span>{metrics.stripeConfigured ? `Configured · ${metrics.stripeMode}` : 'Not configured'}</span></p><p><i className={stripe.automaticTaxEnabled ? 'is-good' : 'is-pending'}/>GST via Stripe Tax <span>{stripe.automaticTaxEnabled ? 'Enabled' : 'Checkout blocked'}</span></p><p><i className="is-pending"/>Production HTTPS and secret storage <span>Required before launch</span></p></div></section>
+          <section className="admin-card" aria-label="Operations readiness"><div className="admin-card-head"><div><p className="card-eyebrow">Reported API posture</p><h3>Readiness checks</h3></div><button type="button" onClick={loadReadiness}>Refresh readiness</button></div>{readinessError && <p role="alert">{readinessError}</p>}<div className="posture-list"><p>API readiness <span>{readiness?.status || 'Not checked'}</span></p><p>Database probe <span>{readiness?.checks?.database || 'Not checked'}</span></p><p>Background job heartbeat <span>{readiness?.checks?.backgroundJobs || 'Not checked'}</span></p><p>Stripe configuration <span>{metrics.stripeConfigured ? `Configured · ${metrics.stripeMode} · not service verification` : 'Not configured'}</span></p><p>GST via Stripe Tax <span>{stripe.automaticTaxEnabled ? 'Configured · not a verified payment' : 'Checkout blocked'}</span></p></div><p>Email delivery, signed provider feedback, storage recovery, backup currency and restore rehearsal are not certified by this API health check. Deployment and operator evidence are separate release gates.</p></section>
         </div>
         <section className="admin-card"><div className="admin-card-head"><div><p className="card-eyebrow">Accountability</p><h3>Recent platform activity</h3></div><button type="button" className="text-button" onClick={() => setActiveTab('Security trail')}>View audit trail <Icon name="arrow" size={14}/></button></div><div className="activity-list">{overview?.recentAudit?.length ? overview.recentAudit.slice(0, 6).map((item, index) => <p key={index}><i/><b>{item.action.replaceAll('_', ' ')}</b><span><em className="entity-type">{item.entityType.replaceAll('_', ' ')}</em> · {formatDateTime(item.createdAt)}</span></p>) : <EmptyCase title="No platform activity yet" copy="Audit records will appear here as administration actions are completed."/>}</div></section>
       </section>}
@@ -184,7 +195,7 @@ export default function SystemAdminPage() {
       {activeTab === 'Message delivery' && <NotificationDeliveryPanel />}
       {activeTab === 'Security trail' && <section className="admin-section"><div className="admin-card"><div className="admin-card-head"><div><p className="card-eyebrow">Operational assurance</p><h3>Audit trail</h3><p className="admin-copy">Configuration, billing and support actions are recorded with the responsible user, time and non-secret context.</p></div></div>{overview?.recentAudit?.length ? <div className="audit-list">{overview.recentAudit.map((item, index) => <article key={index}><i/><div><b>{item.action.replaceAll('_', ' ')}</b><p>{item.entityType.replaceAll('_', ' ')}</p></div><time>{formatDateTime(item.createdAt)}</time></article>)}</div> : <EmptyCase title="No admin actions have been recorded" copy="The security trail will populate as platform administration begins."/>}</div></section>}
     </>}
-    <Customer360Drawer detail={customerDetail} onClose={() => setCustomerDetail(null)} onRefresh={refreshCustomer} onStepUp={(label, execute) => setPrivilegedAction({ label, execute })}/>
+    <Customer360Drawer renderLifecycle={(customer) => <TenantLifecycleAdminPanel key={customer.id} organizationId={customer.id} role="platform_admin"/>} detail={customerDetail} onClose={() => setCustomerDetail(null)} onRefresh={refreshCustomer} onStepUp={(label, execute) => setPrivilegedAction({ label, execute })}/>
     <PrivilegedActionModal action={privilegedAction} onClose={(completed) => { setPrivilegedAction(null); if (completed) refresh(); }}/>
   </main>;
 }

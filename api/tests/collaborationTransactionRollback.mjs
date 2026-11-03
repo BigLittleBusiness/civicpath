@@ -43,7 +43,7 @@ try {
     body: { title: `Rollback ${suffix}`, body: 'This record must roll back when its audit write fails.' },
     params: { actionId },
     tenant: { organizationId },
-    auth: { sub: admin.id, role: admin.role },
+    auth: { sub: admin.id, role: admin.role, organizationId, sessionVersion: admin.sessionVersion },
     ip: '127.0.0.1',
   };
   const res = {

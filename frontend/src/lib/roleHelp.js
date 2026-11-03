@@ -286,7 +286,7 @@ export const ROLE_HELP = {
       {
         "id": 20,
         "question": "20. How do I import our grant register?",
-        "answer": "Use the same Data import panel, choose Grant register, download the template and review the preview before confirming. The import is tenant-scoped and does not copy demonstration records into the council workspace."
+        "answer": "Grant CSV commits are not enabled in this release. Open Grants to enter council-held records with ownership, source provenance and governed lifecycle stages. Do not treat manual or legacy records as a connected opportunity feed. Project CSV import remains available separately in Workspace settings."
       },
       {
         "id": 21,
@@ -394,7 +394,7 @@ export const ROLE_HELP = {
       {
         "id": 8,
         "question": "8. How do I import a project or grant register?",
-        "answer": "Use Workspace settings → Data import, select the register type, download the appropriate template and upload the prepared CSV. Review the preview carefully, then explicitly confirm the tenant-scoped import."
+        "answer": "Use Workspace settings → Data imports for the project CSV template, preview and explicit tenant-scoped commit. For grant records, use Grants to add council-entered records with provenance and controlled lifecycle steps. Legacy grant CSV commits are disabled; an old template or preview does not mean that import is available."
       },
       {
         "id": 9,
@@ -449,7 +449,7 @@ export const ROLE_HELP = {
       {
         "id": 19,
         "question": "19. How do I create a report snapshot?",
-        "answer": "When the report has been reviewed, create a report snapshot for the reporting period. Snapshots are intentionally immutable; correct the live register and capture the revised position in a later snapshot rather than editing history."
+        "answer": "Open Reports, select the strategy and reporting period, review its genuine evidence-link and included-update metrics, then record a draft snapshot in Snapshot history. It preserves the live register at generation time, not a reconstructed period-end position or formal approval. Use the selected history entry for JSON, CSV or printable HTML; corrections go into a later snapshot."
       },
       {
         "id": 20,
@@ -750,7 +750,7 @@ export const ROLE_HELP = {
       {
         "id": 12,
         "question": "12. What is an immutable report snapshot?",
-        "answer": "A snapshot preserves the report position at the time it was prepared. It cannot be edited later; corrections belong in the live register and are reflected in a subsequent reporting period or snapshot."
+        "answer": "A recorded snapshot preserves the live register and selected-quarter included updates at its generation time. Open Reports → Snapshot history to read or download the authorized entry. The stored content is immutable; later live edits do not change it. A recorded draft is not formal council approval, independent assurance or a reconstructed period-end register."
       },
       {
         "id": 13,

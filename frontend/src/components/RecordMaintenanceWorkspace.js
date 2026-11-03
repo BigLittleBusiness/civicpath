@@ -48,12 +48,12 @@ function ReferenceField({ field, value, onChange, strategyId, disabled }) {
 }
 export function MaintenanceRecordEditor({ record, onSaved, compatibilityEndpoints = true }) {
   const [editing, setEditing] = useState(false); const [draft, setDraft] = useState({}); const [saving, setSaving] = useState(false); const [message, setMessage] = useState(''); const [conflict, setConflict] = useState(false); const [archiveDialog, setArchiveDialog] = useState(null); const [reason, setReason] = useState('');
-  const mounted = useRef(true);
+  const mounted = useRef(true); const formSnapshot = useRef(null); const operationSnapshot = useRef(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => { setEditing(false); setArchiveDialog(null); setMessage(''); setConflict(false); }, [record.id]);
   const maintenance = record.maintenance; const kind = maintenance.kind;
   const title = record.name || record.title || record.sourceName || 'Delivery record';
-  const begin = () => { setDraft(Object.fromEntries(maintenance.editableFields.map((key) => [key, initialValue(record, key, maintenance.fields[key])]))); setMessage(''); setConflict(false); setEditing(true); };
+  const begin = () => { formSnapshot.current = record; setDraft(Object.fromEntries(maintenance.editableFields.map((key) => [key, initialValue(record, key, maintenance.fields[key])]))); setMessage(''); setConflict(false); setEditing(true); };
   const reload = async () => {
     setSaving(true);
     try { const response = await api.get(`/maintenance/${kind}/${record.id}`); if (mounted.current) { onSaved(response.data.data); setEditing(false); setConflict(false); setMessage('Latest values loaded. Review them before making another change.'); } }
@@ -64,7 +64,8 @@ export function MaintenanceRecordEditor({ record, onSaved, compatibilityEndpoint
     setSaving(true); setMessage('');
     try {
       let path = `/maintenance/${kind}/${record.id}`;
-      const payload = operation === 'edit' ? maintenancePayload(record, changes) : { expectedVersion: maintenance.version, expectedUpdatedAt: record.updatedAt, ...(operation === 'archive' ? { reason } : {}) };
+      const snapshot = operation === 'edit' && editing ? formSnapshot.current || record : operationSnapshot.current || record;
+      const payload = operation === 'edit' ? maintenancePayload(snapshot, changes) : { expectedVersion: snapshot.maintenance.version, expectedUpdatedAt: snapshot.updatedAt, ...(operation === 'archive' ? { reason } : {}) };
       if (operation === 'edit' && compatibilityEndpoints && ['actions', 'milestones'].includes(kind)) path = kind === 'actions' ? `/strategy-actions/${record.id}` : `/strategy-milestones/${record.id}`;
       const response = await api[operation === 'edit' ? 'patch' : 'post'](operation === 'edit' ? path : `${path}/${operation}`, payload);
       if (!mounted.current) return;
@@ -76,11 +77,11 @@ export function MaintenanceRecordEditor({ record, onSaved, compatibilityEndpoint
     } finally { if (mounted.current) setSaving(false); }
   };
   const submit = (event) => {
-    event.preventDefault(); const changes = {};
-    for (const key of maintenance.editableFields) {
+    event.preventDefault(); const changes = {}; const original = formSnapshot.current || record;
+    for (const key of original.maintenance.editableFields) {
       // Compare form representations first: untouched legacy decimal/date values must not be rounded or rewritten.
-      if (same(draft[key], initialValue(record, key, maintenance.fields[key]))) continue;
-      const value = normalize(draft[key], maintenance.fields[key]); if (!same(value, record[key])) changes[key] = value;
+      if (same(draft[key], initialValue(original, key, original.maintenance.fields[key]))) continue;
+      const value = normalize(draft[key], maintenance.fields[key]); if (!same(value, original[key])) changes[key] = value;
     }
     if (!Object.keys(changes).length) { setMessage('No fields have changed.'); return; }
     send('edit', changes);
@@ -91,8 +92,8 @@ export function MaintenanceRecordEditor({ record, onSaved, compatibilityEndpoint
     <header><div><h5>{title}</h5><p>{words(record.status || record.decisionStatus || record.engagementStatus || record.evidenceType)}{maintenance.archivedAt && ' · Archived'} · Revision {maintenance.version}</p></div><div className="maintenance-actions">
       {!editing && maintenance.editableFields.length > 0 && <button type="button" disabled={saving} onClick={begin}>Edit {maintenance.fields.ownerId && maintenance.editableFields.includes('ownerId') ? '/ assign' : 'record'}</button>}
       {canComplete && <button type="button" disabled={saving || conflict} onClick={() => send('edit', { status: completeCode })}>Mark complete</button>}
-      {maintenance.canArchive && <button type="button" disabled={saving} onClick={() => { setArchiveDialog('archive'); setReason(''); }}>Archive</button>}
-      {maintenance.canRestore && <button type="button" disabled={saving} onClick={() => setArchiveDialog('restore')}>Restore</button>}
+      {maintenance.canArchive && <button type="button" disabled={saving} onClick={() => { operationSnapshot.current = record; setArchiveDialog('archive'); setReason(''); }}>Archive</button>}
+      {maintenance.canRestore && <button type="button" disabled={saving} onClick={() => { operationSnapshot.current = record; setArchiveDialog('restore'); }}>Restore</button>}
     </div></header>
     {maintenance.readOnlyReason && <p className="maintenance-helper">{maintenance.readOnlyReason}</p>}
     {record.ownerId && <p className="maintenance-helper">An accountable Council owner is assigned. Managers can inspect or change the owner through Edit / assign.</p>}

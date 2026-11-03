@@ -1,4 +1,6 @@
 import Joi from 'joi';
+import { assertCreateActor, validateCreateReferences, handleIntegrationError, withActiveRecords, completeActiveRegister } from '../backendRuntime.js';
+import { updateMaintainedProject } from './recordMaintenanceController.js';
 import { sequelize } from '../config/database.js';
 import { CivicProject, Organization, Priority, ProjectPriority, ReadinessAssessment } from '../models/index.js';
 import { recordAudit } from '../services/audit.js';
@@ -34,16 +36,19 @@ async function syncProjectPriorities({ project, organizationId, priorityIds, act
 }
 
 export async function listProjects(req, res, next) {
-  try { return res.json({ data: await CivicProject.findAll({ where: req.tenant, include: [{ model: Priority, attributes: ['id', 'title'] }, { model: ReadinessAssessment, limit: 1, order: [['assessedAt', 'DESC']] }], order: [['updatedAt', 'DESC']] }) }); } catch (error) { return next(error); }
+  try { return res.json({ data: await completeActiveRegister(CivicProject, { where: req.tenant, include: [{ model: Priority, attributes: ['id', 'title'] }, { model: ReadinessAssessment, limit: 1, order: [['assessedAt', 'DESC']] }], order: [['updatedAt', 'DESC']] }) }); } catch (error) { return handleIntegrationError(error, res, next); }
 }
 
 export async function createProject(req, res, next) {
   try {
-    const { value, error } = projectSchema.validate(req.body, { stripUnknown: true });
+    const { value, error } = projectSchema.validate(req.body, { allowUnknown: false });
     if (error) return res.status(422).json({ error: error.message });
     const { priorityIds, categorySelection, stageSelection, constraintSelections, ...attributes } = value;
     const project = await sequelize.transaction(async (transaction) => {
       const organizationId = req.tenant.organizationId;
+      await assertCreateActor(req, transaction, ['org_admin', 'portfolio_manager']);
+      await validateCreateReferences(req, attributes, transaction);
+      for (const constraint of constraintSelections || []) await validateCreateReferences(req, constraint, transaction);
       const category = categorySelection ? await resolveLegacySelector({ organizationId, selectorCode: 'project_category', selection: categorySelection, transaction }) : null;
       const stage = stageSelection ? await resolveLegacySelector({ organizationId, selectorCode: 'project_delivery_stage', selection: stageSelection, transaction }) : null;
       const organization = await Organization.findByPk(organizationId, { attributes: ['defaultCurrency'], transaction });
@@ -52,22 +57,13 @@ export async function createProject(req, res, next) {
       if (stage) await replaceProjectSelectorValues({ projectId: record.id, organizationId, optionSet: stage.optionSet, selections: [stageSelection], actorId: req.auth.sub, transaction });
       if (priorityIds) await syncProjectPriorities({ project: record, organizationId, priorityIds, actorId: req.auth.sub, transaction });
       for (const constraint of constraintSelections || []) await createProjectConstraint({ organizationId, projectId: record.id, ...constraint, actorId: req.auth.sub, transaction });
+      await recordAudit(req, { entityType: 'project', entityId: record.id, action: 'created', metadata: { source: 'council_proof_form' }, transaction });
       return record;
     });
-    await recordAudit(req, { entityType: 'project', entityId: project.id, action: 'created', metadata: { name: project.name, source: 'council_proof_form' } });
     const response = await CivicProject.findOne({ where: { ...req.tenant, id: project.id }, include: [{ model: Priority, attributes: ['id', 'title'] }] });
     return res.status(201).json({ data: response });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrationError(error, res, next); }
 }
 
-export async function updateProject(req, res, next) {
-  try {
-    const { value, error } = projectSchema.validate(req.body, { stripUnknown: true, presence: 'optional' });
-    if (error) return res.status(422).json({ error: error.message });
-    const project = await CivicProject.findOne({ where: { ...req.tenant, id: req.params.projectId } });
-    if (!project) return res.status(404).json({ error: 'Project not found.' });
-    await project.update(value);
-    await recordAudit(req, { entityType: 'project', entityId: project.id, action: 'updated', metadata: Object.keys(value) });
-    return res.json({ data: project });
-  } catch (error) { return next(error); }
-}
+// All callers, including direct imports, use the same maintenance contract.
+export const updateProject = updateMaintainedProject;

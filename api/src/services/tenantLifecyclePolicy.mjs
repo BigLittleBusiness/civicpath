@@ -125,13 +125,17 @@ export const EXPORT_SCHEMA = Object.freeze({
   UserWatch: spec('userId resourceType resourceId deliveryPreference isActive', { references: { userId: 'User' } }),
   CollaborationNotification: spec('userId resourceType resourceId notificationType title detail readAt deliveryPreference', { references: { userId: 'User' } }),
   AuditLog: spec('userId entityType entityId action', { references: { userId: 'User' } }),
+  RecordMaintenanceState: spec('kind recordId version archivedAt archivedBy reason previousIsActive restoredAt restoredBy', { references: { archivedBy: 'User', restoredBy: 'User' } }),
+  FundingLifecycleRecord: spec('entityType entityId version archivedAt provenance sourceUrl evidenceIds workItemIds createdBy updatedBy', { references: { createdBy: 'User', updatedBy: 'User' }, jsonFields: ['evidenceIds', 'workItemIds'] }),
+  NotificationPreference: spec('userId emailEnabled frequency quietStart quietEnd timezone consentAt', { references: { userId: 'User' } }),
+  OrganizationNotificationPolicy: spec('emailEnabled digestsEnabled remindersEnabled'),
   TenantLifecycleState: spec('holdActive closedAt'),
   TenantLifecycleRequest: spec('kind reason status requestedBy reviewedBy reviewNote approvalReference humanVerified backupTreatmentVerified objectVersionsVerified reviewedAt', { references: { requestedBy: 'User', reviewedBy: 'User' } }),
   TenantAttachmentRequest: spec('kind attachmentId requestedBy status', { references: { requestedBy: 'User' } }),
 });
 export const EXPORT_EXCLUSIONS = Object.freeze(['passwords, auth/reset/invitation/session tokens and MFA material', 'platform/system configuration and provider credentials/references',
   'private storage keys, signed URLs and raw attachment binaries', 'internal customer notes, internal billing notes, audit IPs and unrestricted audit payloads',
-  'other tenants, deleted rows and public prospect/enquiry records']);
+  'operational notification delivery, worker lease, feedback and recipient-suppression telemetry', 'other tenants, deleted rows and public prospect/enquiry records']);
 
 const secretKey = /password|secret|token|credential|authorization|cookie|mfa|recovery.?code|session|storage.?key|private.?key|encrypted|provider.?reference|stripe|internal.?email|ip.?address/i;
 export function safeUrl(value) {

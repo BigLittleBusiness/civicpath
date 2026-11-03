@@ -1,6 +1,8 @@
+import { sequelize } from '../config/database.js';
+import { assertCreateActor, handleIntegrationError } from '../backendRuntime.js';
 import Joi from 'joi';
 import { parseCsv } from '../utils/csv.js';
-import { CivicProject, Grant, Priority } from '../models/index.js';
+import { CivicProject, Priority } from '../models/index.js';
 import { recordAudit } from '../services/audit.js';
 
 const previewSchema = Joi.object({ entityType: Joi.string().valid('projects', 'grants').required(), csv: Joi.string().max(1024 * 1024).required() });
@@ -18,30 +20,28 @@ export async function previewImport(req, res, next) {
     const missing = required.filter((header) => !headers.includes(header));
     if (missing.length) return res.status(422).json({ error: `Missing required column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}` });
     return res.json({ data: { entityType: value.entityType, headers, rowCount: rows.length, preview: rows.slice(0, 8), rows } });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrationError(error, res, next); }
 }
 
 export async function commitImport(req, res, next) {
   try {
     const { value, error } = commitSchema.validate(req.body);
     if (error) return res.status(422).json({ error: error.message });
+    if (value.entityType === 'grants') return res.status(422).json({ error: 'Create manual grants through the funding register. CSV cannot bypass the funding provenance and lifecycle contract.' });
     let created = 0; const skipped = []; const organizationId = req.tenant.organizationId;
+    await sequelize.transaction(async (transaction) => {
+    await assertCreateActor(req, transaction, ['org_admin', 'portfolio_manager']);
     if (value.entityType === 'projects') {
       for (const [index, row] of value.rows.entries()) {
         if (!row.name) { skipped.push({ row: index + 2, reason: 'A project name is required.' }); continue; }
         let priorityId = null;
-        if (row.priority) { const [priority] = await Priority.findOrCreate({ where: { organizationId, title: row.priority }, defaults: { organizationId, title: row.priority, outcomeArea: 'Imported priority' } }); priorityId = priority.id; }
-        await CivicProject.create({ organizationId, priorityId, name: row.name, category: row.category || 'other', stage: row.stage || 'concept', estimatedCost: asCurrency(row.estimated_cost), targetFunding: asCurrency(row.target_funding), expectedJobs: Number(row.expected_jobs) || null, targetDate: row.target_date || null, isSample: false });
-        created += 1;
-      }
-    } else {
-      for (const [index, row] of value.rows.entries()) {
-        if (!row.title || !row.funder) { skipped.push({ row: index + 2, reason: 'A grant title and funder are required.' }); continue; }
-        await Grant.create({ organizationId, title: row.title, funder: row.funder, requestedAmount: asCurrency(row.requested_amount), status: row.status || 'identified', dueDate: row.due_date || null, acquittalDueDate: row.acquittal_due_date || null, isSample: false });
+        if (row.priority) { const [priority] = await Priority.findOrCreate({ where: { organizationId, title: row.priority }, defaults: { organizationId, title: row.priority, outcomeArea: 'Imported priority' }, transaction }); priorityId = priority.id; }
+        await CivicProject.create({ organizationId, priorityId, name: row.name, category: row.category || 'other', stage: row.stage || 'concept', estimatedCost: asCurrency(row.estimated_cost), targetFunding: asCurrency(row.target_funding), expectedJobs: Number(row.expected_jobs) || null, targetDate: row.target_date || null, isSample: false }, { transaction });
         created += 1;
       }
     }
-    await recordAudit(req, { entityType: 'import', entityId: null, action: 'committed', metadata: { entityType: value.entityType, created, skipped: skipped.length } });
+    await recordAudit(req, { entityType: 'import', entityId: null, action: 'committed', metadata: { entityType: value.entityType, created, skipped: skipped.length }, transaction });
+    });
     return res.status(201).json({ data: { created, skipped, note: 'Imported records are stored only in the active organisation. The demonstration workspace is never copied into a customer organisation.' } });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrationError(error, res, next); }
 }

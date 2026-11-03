@@ -17,6 +17,24 @@ from types import SimpleNamespace
 import backup_restore as br
 from memory_credentials import client_credentials, mysql_config
 
+def schema_fingerprint(client, database, table):
+    br.require(bool(br.SAFE_ID.fullmatch(database)) and bool(br.SAFE_ID.fullmatch(table)), 'Unsafe schema identifiers')
+    # MySQL SHOW CREATE formatting can change after dump/import even when column
+    # character sets and collations are identical. Compare semantic metadata,
+    # including defaults, generated expressions, indexes, FK rules and CHECKs.
+    scope = f"TABLE_SCHEMA='{database}' AND TABLE_NAME='{table}'"
+    statements = [
+        f"SELECT JSON_ARRAY('table',ENGINE,TABLE_COLLATION,ROW_FORMAT,CREATE_OPTIONS,TABLE_COMMENT,AUTO_INCREMENT) FROM information_schema.TABLES WHERE {scope};",
+        f"SELECT JSON_ARRAY('column',ORDINAL_POSITION,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT,EXTRA,CHARACTER_SET_NAME,COLLATION_NAME,GENERATION_EXPRESSION,COLUMN_COMMENT) FROM information_schema.COLUMNS WHERE {scope} ORDER BY ORDINAL_POSITION;",
+        f"SELECT JSON_ARRAY('index',INDEX_NAME,NON_UNIQUE,SEQ_IN_INDEX,COLUMN_NAME,SUB_PART,COLLATION,INDEX_TYPE,IS_VISIBLE,EXPRESSION,INDEX_COMMENT) FROM information_schema.STATISTICS WHERE {scope} ORDER BY INDEX_NAME,SEQ_IN_INDEX;",
+        f"SELECT JSON_ARRAY('key',CONSTRAINT_NAME,ORDINAL_POSITION,COLUMN_NAME,CASE WHEN REFERENCED_TABLE_SCHEMA='{database}' THEN 'SELF' ELSE REFERENCED_TABLE_SCHEMA END,REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME,POSITION_IN_UNIQUE_CONSTRAINT) FROM information_schema.KEY_COLUMN_USAGE WHERE {scope} ORDER BY CONSTRAINT_NAME,ORDINAL_POSITION;",
+        f"SELECT JSON_ARRAY('foreign',CONSTRAINT_NAME,UNIQUE_CONSTRAINT_NAME,MATCH_OPTION,UPDATE_RULE,DELETE_RULE,CASE WHEN UNIQUE_CONSTRAINT_SCHEMA='{database}' THEN 'SELF' ELSE UNIQUE_CONSTRAINT_SCHEMA END,REFERENCED_TABLE_NAME) FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='{database}' AND TABLE_NAME='{table}' ORDER BY CONSTRAINT_NAME;",
+        f"SELECT JSON_ARRAY('constraint',c.CONSTRAINT_NAME,c.CONSTRAINT_TYPE,c.ENFORCED,k.CHECK_CLAUSE) FROM information_schema.TABLE_CONSTRAINTS c LEFT JOIN information_schema.CHECK_CONSTRAINTS k ON k.CONSTRAINT_SCHEMA=c.CONSTRAINT_SCHEMA AND k.CONSTRAINT_NAME=c.CONSTRAINT_NAME WHERE c.TABLE_SCHEMA='{database}' AND c.TABLE_NAME='{table}' ORDER BY c.CONSTRAINT_NAME;",
+    ]
+    metadata = [json.loads(line) for line in br.run(client, input=''.join(statements).encode()).decode().splitlines()]
+    br.require(bool(metadata), 'Schema metadata unavailable')
+    return hashlib.sha256(json.dumps(metadata, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
+
 def fingerprint(client, name):
     require = br.require
     tables = br.run(client, input=f"SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='{name}' ORDER BY TABLE_NAME;".encode()).decode().splitlines()
@@ -24,11 +42,11 @@ def fingerprint(client, name):
     records = []
     for table in tables:
         require(bool(br.SAFE_ID.fullmatch(table)), 'Unsafe table name')
-        rows = br.run(client, input=f'SELECT COUNT(*) FROM `{name}`.`{table}`; CHECKSUM TABLE `{name}`.`{table}` EXTENDED; SHOW CREATE TABLE `{name}`.`{table}`;'.encode()).decode().splitlines()
-        require(len(rows) >= 3 and rows[0].isdigit(), 'Count verification failed')
+        rows = br.run(client, input=f'SELECT COUNT(*) FROM `{name}`.`{table}`; CHECKSUM TABLE `{name}`.`{table}` EXTENDED;'.encode()).decode().splitlines()
+        require(len(rows) == 2 and rows[0].isdigit(), 'Count verification failed')
         checksum = rows[1].split('\t')[-1]; require(checksum.isdigit(), 'MySQL extended table checksum unavailable')
         records.append({'table': table, 'rows': int(rows[0]), 'checksum': checksum,
-                        'schemaSha256': hashlib.sha256('\n'.join(rows[2:]).encode()).hexdigest()})
+                        'schemaSha256': schema_fingerprint(client, name, table)})
     return records
 
 def main():

@@ -2,10 +2,13 @@ import { Op, Transaction } from 'sequelize';
 import { sequelize } from '../config/database.js';
 import { models } from '../models/index.js';
 import { lifecycleModels } from '../models/tenantLifecycleModels.js';
+import { RecordMaintenanceState } from '../models/recordMaintenance.js';
+import { FundingLifecycleRecord } from '../models/fundingLifecycle.js';
+import { NotificationPreference, OrganizationNotificationPolicy } from '../models/notificationReliability.js';
 import { closeTenantWorkspaceAccess } from './tenantLifecycleAccess.js';
 import { LifecycleError } from './tenantLifecyclePolicy.mjs';
 
-const all = { ...models, ...lifecycleModels };
+const all = { ...models, ...lifecycleModels, RecordMaintenanceState, FundingLifecycleRecord, NotificationPreference, OrganizationNotificationPolicy };
 const { Organization, User, AuditLog, SupportAttachment, SupportCase, EvidenceItem, TenantLifecycleState: State, TenantLifecycleRequest: Request, TenantWorkspaceExport: Export, TenantAttachmentRequest: AttachmentRequest } = all;
 const lock = (transaction) => transaction ? { transaction, lock: transaction.LOCK.UPDATE } : {};
 export function exportSummary(record, now = Date.now()) {

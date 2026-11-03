@@ -1,4 +1,6 @@
 import Joi from 'joi';
+import { sequelize } from '../config/database.js';
+import { assertCreateActor, handleIntegrationError } from '../backendRuntime.js';
 import { AuditLog, Organization, User } from '../models/index.js';
 
 const profileSchema = Joi.object({
@@ -35,33 +37,23 @@ export async function getWorkspaceProfile(req, res, next) {
     ]);
     if (!organization) return res.status(404).json({ error: 'Workspace profile not found.' });
     return res.json({ data: { profile: profileView(organization), eligibleOwners: members } });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrationError(error, res, next); }
 }
 
 export async function updateWorkspaceProfile(req, res, next) {
   try {
-    const { value, error } = profileSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    const { value, error } = profileSchema.validate(req.body, { abortEarly: false, allowUnknown: false });
     if (error) return res.status(422).json({ error: 'Please review the workspace profile fields.', details: error.details.map((item) => item.message) });
-    const organization = await Organization.findByPk(req.tenant.organizationId);
-    if (!organization) return res.status(404).json({ error: 'Workspace profile not found.' });
-    if (value.workspaceOwnerId) {
-      const owner = await User.findOne({ where: { id: value.workspaceOwnerId, organizationId: organization.id, status: 'active', role: ['org_admin', 'portfolio_manager'] } });
-      if (!owner) return res.status(422).json({ error: 'Choose an active Organisation Administrator or Portfolio Manager as workspace owner.' });
-    }
-    const previouslyComplete = Boolean(organization.onboardingCompleteAt);
-    await organization.update({
-      ...value,
-      onboardingCompleteAt: previouslyComplete ? organization.onboardingCompleteAt : new Date(),
-    });
-    await AuditLog.create({
-      organizationId: organization.id,
-      userId: req.auth.sub,
-      entityType: 'workspace_profile',
-      entityId: organization.id,
-      action: 'workspace_profile_updated',
-      metadata: { changed: Object.keys(value), workspaceOwnerId: value.workspaceOwnerId || null },
-      ipAddress: req.ip,
+    const organization = await sequelize.transaction(async (transaction) => {
+      const { organization } = await assertCreateActor(req, transaction, ['org_admin']);
+      if (value.workspaceOwnerId) {
+        const owner = await User.findOne({ where: { id: value.workspaceOwnerId, organizationId: organization.id, status: 'active', role: ['org_admin', 'portfolio_manager'] }, transaction, lock: transaction.LOCK.UPDATE });
+        if (!owner) throw Object.assign(new Error('Choose an active council workspace owner.'), { integrationError: true, status: 422 });
+      }
+      await organization.update({ ...value, onboardingCompleteAt: organization.onboardingCompleteAt || new Date() }, { transaction });
+      await AuditLog.create({ organizationId: organization.id, userId: req.auth.sub, entityType: 'workspace_profile', entityId: organization.id, action: 'workspace_profile_updated', metadata: { changed: Object.keys(value), workspaceOwnerId: value.workspaceOwnerId || null }, ipAddress: req.ip }, { transaction });
+      return organization;
     });
     return res.json({ data: profileView(organization) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrationError(error, res, next); }
 }

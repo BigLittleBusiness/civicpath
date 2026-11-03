@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import { Op } from 'sequelize';
 import { sequelize } from '../src/config/database.js';
 import { env } from '../src/config/env.js';
+import { NotificationOutbox, ReliableNotificationDelivery, NotificationPreference } from '../src/models/notificationReliability.js';
 import {
   ActionDependency, AuditLog, CollaborationActivity, CollaborationComment, CollaborationNotification, CollaborationParticipant, CollaborationRequest, CollaborationThread, DecisionPack, EngagementPlan, FundingCollaborationRoom, FundingRoomCheckpoint, PartnerCommitment, QuarterlyActionUpdate, QuarterlyReportingPeriod, ReviewPack, ReviewPackItem, ReviewPackOutcome, ReviewPackQuestion, StrategyAction, StrategyFocusArea, StrategyReportSnapshot, StrategyStatusDefinition, StrategicPlan, User, UserWatch,
 } from '../src/models/index.js';
@@ -61,14 +62,17 @@ async function cleanup() {
   await QuarterlyReportingPeriod.destroy({ where: { organizationId, strategyId }, force: true });
   await StrategicPlan.destroy({ where: { organizationId, id: strategyId }, force: true });
   // Do not delete audit history; immutable audit evidence remains ID-scoped test history.
-  if (users.length) await User.destroy({ where: { organizationId, id: users }, force: true });
+  if (users.length) {
+    for (const model of [ReliableNotificationDelivery, NotificationOutbox, NotificationPreference]) await model.destroy({ where: { organizationId, userId: users }, force: true });
+    await User.destroy({ where: { organizationId, id: users }, force: true });
+  }
 }
 try {
   await sequelize.authenticate();
   const admin = await User.findOne({ where: { role: 'org_admin', status: 'active' } });
   assert.ok(admin, 'An active Council administrator in the isolated fixture is required.'); organizationId = admin.organizationId;
   const createUser = async (role) => {
-    const user = await User.create({ organizationId, email: `collaboration-${role}-${suffix}@example.invalid`, firstName: 'Test', lastName: role, passwordHash: 'test-only-not-a-login', role, status: 'active' }); users.push(user.id); return user;
+    const user = await User.create({ organizationId, email: `collaboration-${role}-${suffix}-${users.length}@example.invalid`, firstName: 'Test', lastName: role, passwordHash: 'test-only-not-a-login', role, status: 'active' }); users.push(user.id); return user;
   };
   const peer = await createUser('portfolio_manager'); const reviewer = await createUser('contributor'); const executive = await createUser('executive'); const stranger = await createUser('contributor');
   const headers = headersFor(admin); const peerHeaders = headersFor(peer); const reviewerHeaders = headersFor(reviewer); const executiveHeaders = headersFor(executive); const strangerHeaders = headersFor(stranger);
@@ -122,7 +126,7 @@ try {
   assert.equal(update.workflowStatus, 'draft'); assert.equal(update.version, includedVersion + 1);
   for (const field of ['reviewedBy', 'reviewedAt', 'reviewComment', 'includedInReportAt', 'reviewRequestedFromUserId']) assert.equal(update[field], null);
   await expectStatus(409, narrativePath, headers, 'POST', { ...narrative, expectedVersion: includedVersion });
-  assert.equal(JSON.stringify((await StrategyReportSnapshot.findByPk(snapshot.id)).content), originalSnapshot, 'Immutable report content must remain unchanged.');
+  assert.deepEqual((await StrategyReportSnapshot.findByPk(snapshot.id)).content, JSON.parse(originalSnapshot), 'Immutable report content must remain unchanged regardless of MySQL JSON key ordering.');
   const competingVersion = update.version;
   const competing = await Promise.all([result(narrativePath, headers, 'POST', { ...narrative, achievements: 'Competing A', expectedVersion: competingVersion }), result(narrativePath, headers, 'POST', { ...narrative, achievements: 'Competing B', expectedVersion: competingVersion })]);
   assert.deepEqual(competing.map((item) => item.status).sort(), [200, 409]);

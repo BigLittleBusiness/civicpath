@@ -1,4 +1,8 @@
 import { Router } from 'express';
+import { createTenantLifecycleRouters } from './tenantLifecycleRouter.js';
+// /v1/admin already authenticates authoritative operations identity. Re-running
+// requireAuth under a nested baseUrl would correctly default to tenant/deny.
+const { platformRouter: tenantLifecycleAdminRouter } = createTenantLifecycleRouters({ auth: (_req, _res, next) => next() });
 import { requireRoles, requireStepUp } from '../../middleware/auth.js';
 import { platformOverview, listCustomers, listSupportCases, updateSupportCase, getStripeSettings, saveStripeSettings, listPlans, listNotificationDelivery } from '../../controllers/adminController.js';
 import { customer360, changeTenantState, addCustomerContact, addCustomerNote } from '../../controllers/customerAdminController.js';
@@ -9,6 +13,7 @@ import { cancelCustomerPlan, changeCustomerPlan, customerBillingSummary, refundC
 
 export const adminRouter = Router();
 adminRouter.use(requireRoles('platform_admin'));
+adminRouter.use('/tenant-lifecycle', tenantLifecycleAdminRouter);
 adminRouter.get('/overview', platformOverview);
 adminRouter.get('/customers', listCustomers);
 adminRouter.get('/customers/:customerId', customer360);

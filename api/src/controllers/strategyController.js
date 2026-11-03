@@ -1,3 +1,6 @@
+import { updateMaintainedStrategyAction, updateMaintainedMilestone } from './recordMaintenanceController.js';
+import { computeEvidenceCoverage } from '../services/reportMetrics.js';
+import { activeRecordWhere, withActiveRecords } from '../backendRuntime.js';
 import Joi from 'joi';
 import { Op } from 'sequelize';
 import { parseCsv } from '../utils/csv.js';
@@ -16,7 +19,6 @@ import {
   StrategyDecision,
   StrategyFocusArea,
   StrategyMeasure,
-  StrategyReportSnapshot,
   StrategyRiskIssue,
   StrategyStakeholder,
   StrategicPlan,
@@ -58,7 +60,6 @@ const stakeholderSchema = Joi.object({ ownerId: Joi.string().uuid().allow(null),
 const riskSchema = Joi.object({ actionId: Joi.string().uuid().allow(null), dependencyId: Joi.string().uuid().allow(null), ownerId: Joi.string().uuid().allow(null), issueType: Joi.string().valid('risk', 'issue').default('risk'), title: Joi.string().max(260).required(), detail: Joi.string().max(12000).allow('', null), status: Joi.string().valid('open', 'monitoring', 'mitigating', 'resolved', 'accepted').default('open'), impact: Joi.number().integer().min(1).max(5).allow(null), likelihood: Joi.number().integer().min(1).max(5).allow(null), mitigation: Joi.string().max(12000).allow('', null), dueDate: Joi.date().iso().allow(null), resolvedAt: Joi.date().iso().allow(null) });
 const fundingSchema = Joi.object({ sourceName: Joi.string().max(200).required(), sourceType: Joi.string().valid('grant', 'budget', 'partner', 'private', 'advocacy', 'other').default('other'), amount: Joi.number().min(0).allow(null), currencyCode: Joi.string().valid('AUD', 'NZD').default('AUD'), status: Joi.string().valid('identified', 'preparing', 'submitted', 'approved', 'secured', 'not_proceeding').default('identified'), dueDate: Joi.date().iso().allow(null), note: Joi.string().max(8000).allow('', null) });
 const evidenceSchema = Joi.object({ title: Joi.string().max(240).required(), evidenceType: Joi.string().valid('document', 'metric', 'decision_record', 'link', 'other').default('document'), externalUrl: Joi.string().uri().allow('', null), source: Joi.string().max(240).allow('', null), isVerified: Joi.boolean().default(false) });
-const reportSchema = Joi.object({ status: Joi.string().valid('draft', 'reviewed', 'approved').default('draft'), narrative: Joi.string().max(30000).allow('', null) });
 const importSchema = Joi.object({ csv: Joi.string().max(1024 * 1024).required() });
 
 function validation(schema, body, res, { partial = false } = {}) {
@@ -82,7 +83,7 @@ async function ensureAction(req, actionId) {
 }
 async function ownerExists(organizationId, userId) {
   if (!userId) return true;
-  return Boolean(await User.findOne({ where: { id: userId, organizationId } }));
+  return Boolean(await User.findOne({ where: { id: userId, organizationId, status: 'active', role: ['org_admin', 'portfolio_manager', 'contributor'] } }));
 }
 async function ensureDefaults(organizationId, strategyId) {
   for (const item of STATUS_DEFINITIONS) await StrategyStatusDefinition.findOrCreate({ where: { strategyId, code: item.code }, defaults: { ...item, organizationId, strategyId } });
@@ -150,20 +151,21 @@ async function createDefaultPeriods({ organizationId, strategy }) {
     cursor.setUTCMonth(cursor.getUTCMonth() + 3); guard += 1;
   }
 }
-async function reportPackage(organizationId, strategyId, reportingPeriodId = null) {
+async function rawReportPackage(organizationId, strategyId, reportingPeriodId = null) {
   const strategy = await StrategicPlan.findOne({ where: { organizationId, id: strategyId }, include: [{ model: StrategyFocusArea, where: { status: 'active' }, required: false, order: [['sortOrder', 'ASC']] }] });
   if (!strategy) return null;
   const period = reportingPeriodId ? await QuarterlyReportingPeriod.findOne({ where: { organizationId, strategyId, id: reportingPeriodId } }) : await QuarterlyReportingPeriod.findOne({ where: { organizationId, strategyId, status: 'open' }, order: [['endsOn', 'DESC']] }) || await QuarterlyReportingPeriod.findOne({ where: { organizationId, strategyId }, order: [['endsOn', 'DESC']] });
-  const [statuses, actions, dependencies, milestones, decisions, allUpdates, risks, measures, funding] = await Promise.all([
+  const [statuses, actions, dependencies, milestones, decisions, allUpdates, risks, measures, funding, evidenceLinks] = await Promise.all([
     StrategyStatusDefinition.findAll({ where: { organizationId, strategyId, isActive: true }, order: [['sortOrder', 'ASC']] }),
     StrategyAction.findAll({ where: { organizationId, strategyId, isActive: true }, include: [{ model: StrategyFocusArea, attributes: ['id', 'code', 'title'] }, { model: User, as: 'actionOwner', attributes: ['id', 'firstName', 'lastName'] }], order: [['reportingPriority', 'DESC'], ['targetDate', 'ASC']] }),
     ActionDependency.findAll({ where: { organizationId, strategyId, status: { [Op.in]: ['open', 'progressing'] } }, include: [{ model: User, as: 'dependencyOwner', attributes: ['id', 'firstName', 'lastName'] }] }),
-    ActionMilestone.findAll({ where: { organizationId, status: { [Op.ne]: 'complete' } }, include: [{ model: StrategyAction, where: { strategyId }, attributes: ['id', 'title', 'actionCode'] }] }),
-    StrategyDecision.findAll({ where: { organizationId, strategyId, decisionStatus: { [Op.in]: ['required', 'draft', 'deferred'] } }, include: [{ model: StrategyAction, attributes: ['id', 'title', 'actionCode'] }, { model: User, as: 'decisionOwner', attributes: ['id', 'firstName', 'lastName'] }], order: [['dueDate', 'ASC']] }),
-    period ? QuarterlyActionUpdate.findAll({ where: { organizationId, reportingPeriodId: period.id }, include: [{ model: StrategyAction, attributes: ['id', 'title', 'actionCode'] }] }) : [],
-    StrategyRiskIssue.findAll({ where: { organizationId, strategyId, status: { [Op.notIn]: ['resolved', 'accepted'] } }, include: [{ model: StrategyAction, attributes: ['id', 'title', 'actionCode'] }], order: [['impact', 'DESC'], ['likelihood', 'DESC']] }),
-    StrategyMeasure.findAll({ where: { organizationId }, include: [{ model: StrategyAction, where: { strategyId }, attributes: ['id', 'title', 'actionCode'] }] }),
-    ActionFundingPosition.findAll({ where: { organizationId }, include: [{ model: StrategyAction, where: { strategyId }, attributes: ['id', 'title', 'actionCode'] }] }),
+    ActionMilestone.findAll({ where: { organizationId, status: { [Op.ne]: 'complete' } }, include: [{ model: StrategyAction, where: { organizationId, strategyId, isActive: true }, required: true, attributes: ['id', 'title', 'actionCode'] }] }),
+    StrategyDecision.findAll({ where: { organizationId, strategyId, decisionStatus: { [Op.in]: ['required', 'draft', 'deferred'] } }, include: [{ model: StrategyAction, where: { organizationId, strategyId, isActive: true }, required: false, attributes: ['id', 'title', 'actionCode'] }, { model: User, as: 'decisionOwner', attributes: ['id', 'firstName', 'lastName'] }], order: [['dueDate', 'ASC']] }),
+    period ? QuarterlyActionUpdate.findAll({ where: { organizationId, reportingPeriodId: period.id }, include: [{ model: StrategyAction, where: { organizationId, strategyId, isActive: true }, required: false, attributes: ['id', 'title', 'actionCode'] }] }) : [],
+    StrategyRiskIssue.findAll({ where: { organizationId, strategyId, status: { [Op.notIn]: ['resolved', 'accepted'] } }, include: [{ model: StrategyAction, where: { organizationId, strategyId, isActive: true }, required: false, attributes: ['id', 'title', 'actionCode'] }], order: [['impact', 'DESC'], ['likelihood', 'DESC']] }),
+    StrategyMeasure.findAll({ where: { organizationId }, include: [{ model: StrategyAction, where: { organizationId, strategyId, isActive: true }, required: true, attributes: ['id', 'title', 'actionCode'] }] }),
+    ActionFundingPosition.findAll({ where: { organizationId }, include: [{ model: StrategyAction, where: { organizationId, strategyId, isActive: true }, required: true, attributes: ['id', 'title', 'actionCode'] }] }),
+    ActionEvidenceLink.findAll({ where: { organizationId }, attributes: ['id', 'organizationId', 'actionId'], include: [{ model: StrategyAction, where: { organizationId, strategyId, isActive: true }, required: true, attributes: [] }] }),
   ]);
   const statusByCode = Object.fromEntries(statuses.map((item) => [item.code, plain(item)]));
   const actionRows = actions.map(plain);
@@ -172,13 +174,16 @@ async function reportPackage(organizationId, strategyId, reportingPeriodId = nul
   const overdueMilestones = milestones.filter((item) => item.dueDate && item.dueDate < todayIso()).map(plain);
   const criticalDependencies = (await resolveReferences(organizationId, dependencies.filter((item) => item.severity === 'critical')));
   const unresolvedDecisions = decisions.map(plain);
-  const currentUpdates = allUpdates.filter((update) => update.workflowStatus === 'included_in_report').map(plain);
-  const updatesAwaitingInclusion = allUpdates.filter((update) => update.workflowStatus !== 'included_in_report').map(plain);
+  const activeIds = new Set(actionRows.map((a) => a.id));
+  const currentUpdates = [...new Map(allUpdates.filter((update) => activeIds.has(update.actionId) && update.workflowStatus === 'included_in_report').map(plain).map((u) => [u.actionId, u])).values()];
+  const updatesAwaitingInclusion = allUpdates.filter((update) => activeIds.has(update.actionId) && update.workflowStatus !== 'included_in_report').map(plain);
   const updateCoverage = actionRows.length ? Math.round((currentUpdates.length / actionRows.length) * 100) : 0;
-  const evidenceCoverage = actionRows.length ? Math.round((actionRows.filter((action) => action.readinessScore > 0).length / actionRows.length) * 100) : 0;
-  const fundingTotal = funding.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const evidenceMetrics = computeEvidenceCoverage(actionRows, evidenceLinks, organizationId);
+  const fundingByCurrency = {};
+  for (const item of funding) { if (!['AUD', 'NZD'].includes(item.currencyCode)) continue; const bucket = fundingByCurrency[item.currencyCode] ||= { recorded: 0, secured: 0 }; bucket.recorded += Number(item.amount || 0); if (item.status === 'secured') bucket.secured += Number(item.amount || 0); }
+  const fundingTotal = Object.keys(fundingByCurrency).length === 1 ? Object.values(fundingByCurrency)[0].recorded : null;
   const summary = {
-    totalActions: actionRows.length, onTrack: statusMix.find((item) => item.category === 'on_track')?.count || 0, attentionRequired: statusMix.filter((item) => ['attention', 'off_track'].includes(item.category)).reduce((sum, item) => sum + item.count, 0), completed: statusMix.find((item) => item.category === 'complete')?.count || 0, criticalDependencies: criticalDependencies.length, overdueMilestones: overdueMilestones.length, decisionsRequired: unresolvedDecisions.length, updateCoverage, evidenceCoverage, fundingTotal,
+    totalActions: actionRows.length, onTrack: statusMix.filter((item) => item.category === 'on_track').reduce((sum, item) => sum + item.count, 0), attentionRequired: statusMix.filter((item) => ['attention', 'off_track'].includes(item.category)).reduce((sum, item) => sum + item.count, 0), completed: statusMix.filter((item) => item.category === 'complete').reduce((sum, item) => sum + item.count, 0), criticalDependencies: criticalDependencies.length, overdueMilestones: overdueMilestones.length, decisionsRequired: unresolvedDecisions.length, updateCoverage, ...evidenceMetrics, fundingTotal, fundingByCurrency,
   };
   const narrative = `This review covers ${summary.totalActions} active actions${period ? ` for ${period.label}` : ''}. ${summary.onTrack} are on track, ${summary.attentionRequired} require attention and ${summary.completed} are complete. ${summary.criticalDependencies ? `${summary.criticalDependencies} critical dependencies require active resolution. ` : ''}${summary.decisionsRequired ? `${summary.decisionsRequired} decision items should be considered in the next leadership discussion. ` : ''}${summary.overdueMilestones ? `${summary.overdueMilestones} milestones are overdue. ` : ''}This is a data-led draft for officer review; it does not infer outcomes or make claims beyond the recorded evidence.`;
   return { strategy: plain(strategy), reportingPeriod: plain(period), summary, statusMix, focusSummary, actions: actionRows, dependencies: await resolveReferences(organizationId, dependencies), criticalDependencies, overdueMilestones, decisions: unresolvedDecisions, updates: currentUpdates, updatesAwaitingInclusion, risks: risks.map(plain), measures: measures.map(plain), funding: funding.map(plain), narrative };
@@ -190,13 +195,12 @@ export async function listStrategyWorkspace(req, res, next) {
     const strategies = await StrategicPlan.findAll({ where: { organizationId }, order: [['status', 'ASC'], ['updatedAt', 'DESC']] });
     const strategy = requestedId ? strategies.find((item) => item.id === requestedId) : strategies.find((item) => item.status === 'active') || strategies[0];
     if (!strategy) return res.json({ data: { strategies: [], selectedStrategy: null, focusAreas: [], statuses: [], actions: [], reportingPeriods: [], alerts: [], teamMembers: [] } });
-    await ensureDefaults(organizationId, strategy.id);
     const [focusAreas, statuses, actions, periods, alerts, teamMembers, report] = await Promise.all([
       StrategyFocusArea.findAll({ where: { organizationId, strategyId: strategy.id, status: 'active' }, order: [['sortOrder', 'ASC']] }),
       StrategyStatusDefinition.findAll({ where: { organizationId, strategyId: strategy.id, isActive: true }, order: [['sortOrder', 'ASC']] }),
       StrategyAction.findAll({ where: { organizationId, strategyId: strategy.id, isActive: true }, include: [{ model: StrategyFocusArea, attributes: ['id', 'code', 'title'] }, { model: User, as: 'actionOwner', attributes: ['id', 'firstName', 'lastName', 'role'] }, { model: CivicProject, as: 'linkedProjects', attributes: ['id', 'name', 'stage'], through: { attributes: ['relationshipType'] } }], order: [['reportingPriority', 'DESC'], ['targetDate', 'ASC']] }),
       QuarterlyReportingPeriod.findAll({ where: { organizationId, strategyId: strategy.id }, order: [['endsOn', 'DESC']] }),
-      StrategyAlert.findAll({ where: { organizationId, strategyId: strategy.id, status: 'open' }, include: [{ model: StrategyAction, attributes: ['id', 'title', 'actionCode'] }], order: [['severity', 'DESC'], ['dueDate', 'ASC']], limit: 20 }),
+      StrategyAlert.findAll({ where: { organizationId, strategyId: strategy.id, status: 'open' }, include: [{ model: StrategyAction, where: { organizationId, strategyId: strategy.id, isActive: true }, required: false, attributes: ['id', 'title', 'actionCode'] }], order: [['severity', 'DESC'], ['dueDate', 'ASC']], limit: 20 }),
       User.findAll({ where: { organizationId, status: 'active' }, attributes: ['id', 'firstName', 'lastName', 'role'], order: [['firstName', 'ASC']] }),
       reportPackage(organizationId, strategy.id),
     ]);
@@ -253,19 +257,7 @@ export async function getStrategyAction(req, res, next) {
   try { const data = await actionDetail(req.tenant.organizationId, req.params.actionId); if (!data) return res.status(404).json({ error: 'Strategy action not found.' }); return res.json({ data }); } catch (error) { return next(error); }
 }
 
-export async function updateStrategyAction(req, res, next) {
-  try {
-    const action = await ensureAction(req, req.params.actionId); if (!action) return res.status(404).json({ error: 'Strategy action not found.' });
-    const value = validation(actionSchema, req.body, res, { partial: true }); if (!value) return;
-    if (value.focusAreaId && !await StrategyFocusArea.findOne({ where: { id: value.focusAreaId, organizationId: req.tenant.organizationId, strategyId: action.strategyId, status: 'active' } })) return res.status(422).json({ error: 'The selected focus area is not available for this strategy.' });
-    if (value.ownerId && !await ownerExists(req.tenant.organizationId, value.ownerId)) return res.status(422).json({ error: 'The nominated action owner is not active in this council.' });
-    await action.update(value);
-    if (value.ownerId) await CollaborationParticipant.findOrCreate({ where: { organizationId: req.tenant.organizationId, resourceType: 'action', resourceId: action.id, userId: value.ownerId, role: 'accountable' }, defaults: { addedBy: req.auth.sub } });
-    await recordAudit(req, { entityType: 'strategy_action', entityId: action.id, action: 'updated', metadata: Object.keys(value) });
-    return res.json({ data: await actionDetail(req.tenant.organizationId, action.id) });
-  } catch (error) { return next(error); }
-}
-
+export const updateStrategyAction = updateMaintainedStrategyAction;
 export async function linkActionProject(req, res, next) {
   try {
     const action = await ensureAction(req, req.params.actionId); if (!action) return res.status(404).json({ error: 'Strategy action not found.' });
@@ -290,10 +282,7 @@ export async function unlinkActionProject(req, res, next) {
 export async function createMilestone(req, res, next) {
   try { const action = await ensureAction(req, req.params.actionId); if (!action) return res.status(404).json({ error: 'Strategy action not found.' }); const value = validation(milestoneSchema, req.body, res); if (!value) return; if (value.ownerId && !await ownerExists(req.tenant.organizationId, value.ownerId)) return res.status(422).json({ error: 'The nominated milestone owner is not active in this council.' }); const record = await ActionMilestone.create({ ...value, organizationId: req.tenant.organizationId, actionId: action.id }); await recordAudit(req, { entityType: 'action_milestone', entityId: record.id, action: 'created', metadata: { actionId: action.id } }); return res.status(201).json({ data: record }); } catch (error) { return next(error); }
 }
-export async function updateMilestone(req, res, next) {
-  try { const record = await ActionMilestone.findOne({ where: { id: req.params.milestoneId, organizationId: req.tenant.organizationId } }); if (!record) return res.status(404).json({ error: 'Milestone not found.' }); const value = validation(milestoneSchema, req.body, res, { partial: true }); if (!value) return; if (value.ownerId && !await ownerExists(req.tenant.organizationId, value.ownerId)) return res.status(422).json({ error: 'The nominated milestone owner is not active in this council.' }); await record.update(value); await recordAudit(req, { entityType: 'action_milestone', entityId: record.id, action: 'updated', metadata: Object.keys(value) }); return res.json({ data: record }); } catch (error) { return next(error); }
-}
-
+export const updateMilestone = updateMaintainedMilestone;
 export async function createDependency(req, res, next) {
   try {
     const strategy = await ensureStrategy(req, req.params.strategyId); if (!strategy) return res.status(404).json({ error: 'Strategy not found.' }); const value = validation(dependencySchema, req.body, res); if (!value) return;
@@ -361,9 +350,6 @@ export async function createEvidenceLink(req, res, next) {
 export async function getQuarterlyReport(req, res, next) {
   try { const period = await QuarterlyReportingPeriod.findOne({ where: { id: req.params.periodId, organizationId: req.tenant.organizationId } }); if (!period) return res.status(404).json({ error: 'Reporting period not found.' }); const data = await reportPackage(req.tenant.organizationId, period.strategyId, period.id); return res.json({ data }); } catch (error) { return next(error); }
 }
-export async function createReportSnapshot(req, res, next) {
-  try { const period = await QuarterlyReportingPeriod.findOne({ where: { id: req.params.periodId, organizationId: req.tenant.organizationId } }); if (!period) return res.status(404).json({ error: 'Reporting period not found.' }); const value = validation(reportSchema, req.body, res); if (!value) return; const packageData = await reportPackage(req.tenant.organizationId, period.strategyId, period.id); const version = (await StrategyReportSnapshot.count({ where: { organizationId: req.tenant.organizationId, strategyId: period.strategyId, reportingPeriodId: period.id, reportType: 'quarterly' } })) + 1; const record = await StrategyReportSnapshot.create({ organizationId: req.tenant.organizationId, strategyId: period.strategyId, reportingPeriodId: period.id, preparedBy: req.auth.sub, reportType: 'quarterly', version, status: value.status, content: packageData, narrative: value.narrative || packageData.narrative }); await recordAudit(req, { entityType: 'strategy_report_snapshot', entityId: record.id, action: 'created', metadata: { periodId: period.id, version } }); return res.status(201).json({ data: record }); } catch (error) { return next(error); }
-}
 export async function listAlerts(req, res, next) {
   try { const strategy = await ensureStrategy(req, req.params.strategyId); if (!strategy) return res.status(404).json({ error: 'Strategy not found.' }); const data = await StrategyAlert.findAll({ where: { organizationId: req.tenant.organizationId, strategyId: strategy.id, ...(req.query.status ? { status: req.query.status } : {}) }, include: [{ model: StrategyAction, attributes: ['id', 'actionCode', 'title'] }, { model: User, as: 'alertOwner', attributes: ['id', 'firstName', 'lastName'] }], order: [['severity', 'DESC'], ['dueDate', 'ASC']] }); return res.json({ data }); } catch (error) { return next(error); }
 }
@@ -391,4 +377,5 @@ export async function commitStrategyImport(req, res, next) {
   } catch (error) { return next(error); }
 }
 
+const reportPackage = (...args) => withActiveRecords(() => rawReportPackage(...args));
 export { reportPackage };

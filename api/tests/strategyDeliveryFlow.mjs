@@ -74,7 +74,7 @@ try {
   const user = await User.findOne({ where: { role: 'org_admin', status: 'active' } });
   assert.ok(user, 'An active council administrator is required for the strategy flow test.');
   organizationId = user.organizationId;
-  const token = jwt.sign({ sub: user.id, organizationId, role: user.role }, env.jwtSecret, { expiresIn: '5m' });
+  const token = jwt.sign({ sub: user.id, organizationId, role: user.role, sessionVersion: user.sessionVersion }, env.jwtSecret, { expiresIn: '5m' });
   const headers = { authorization: `Bearer ${token}` };
   const project = await CivicProject.findOne({ where: { organizationId }, attributes: ['id'] });
   assert.ok(project, 'A tenant project is required to test action/project links.');
@@ -93,14 +93,14 @@ try {
   await request(`/strategies/${strategyId}/dependencies`, { method: 'POST', headers, body: JSON.stringify({ dependentType: 'action', dependentId: actionA.id, predecessorType: 'action', predecessorId: actionB.id, dependencyType: 'decision', severity: 'critical', status: 'open', detail: 'Test critical dependency.' }) });
   await request(`/strategies/${strategyId}/decisions`, { method: 'POST', headers, body: JSON.stringify({ actionId: actionA.id, ownerId: user.id, title: 'Test decision due', decisionStatus: 'required', dueDate: '2025-01-01' }) });
   const period = await request(`/strategies/${strategyId}/reporting-periods`, { method: 'POST', headers, body: JSON.stringify({ label: `Test Q1 ${suffix}`, financialYear: `T-${suffix}`, quarter: 'Q1', startsOn: '2026-07-01', endsOn: '2026-09-30', updateDueOn: '2026-09-30', status: 'open' }) });
-  await request(`/strategy-reporting-periods/${period.id}/action-updates`, { method: 'POST', headers, body: JSON.stringify({ actionId: actionA.id, status: 'attention', movement: 'advanced', achievements: 'Test delivery update', evidenceSummary: 'Test evidence', nextQuarterCommitments: 'Test next commitment' }) });
+  await request(`/strategy-reporting-periods/${period.id}/action-updates`, { method: 'POST', headers, body: JSON.stringify({ expectedVersion: 0, actionId: actionA.id, status: 'attention', movement: 'advanced', achievements: 'Test delivery update', evidenceSummary: 'Test evidence', nextQuarterCommitments: 'Test next commitment' }) });
   await request(`/strategy-actions/${actionA.id}/measures`, { method: 'POST', headers, body: JSON.stringify({ name: 'Test measure', unit: '%', currentValue: '55', reportingFrequency: 'quarterly', lastMeasuredAt: '2025-01-01' }) });
   const actionDetail = await request(`/strategy-actions/${actionA.id}`, { headers });
   assert.equal(actionDetail.linkedProjects.length, 1, 'Action should return linked portfolio project.');
   assert.equal(actionDetail.ActionMilestones.length, 1, 'Action should return milestone.');
   const report = await request(`/strategy-reporting-periods/${period.id}/report`, { headers });
   assert.equal(report.summary.totalActions, 3, 'Quarterly report should include created and imported strategy actions.');
-  assert.equal(report.summary.updateCoverage, 33, 'Quarterly report should calculate action-update coverage.');
+  assert.equal(report.summary.updateCoverage, 0, 'Draft updates must not be counted as included action-update coverage.');
   const snapshot = await request(`/strategy-reporting-periods/${period.id}/report-snapshots`, { method: 'POST', headers, body: JSON.stringify({ status: 'draft' }) });
   assert.equal(snapshot.reportingPeriodId, period.id, 'Report snapshot should retain the reporting period.');
   const alerts = await evaluateStrategyAlerts({ organizationId });

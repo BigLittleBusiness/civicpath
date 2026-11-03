@@ -108,7 +108,7 @@ class BackupTests(unittest.TestCase):
     def test_actual_pipeline_with_fake_mysql_commands_and_real_cipher(self):
         bin_dir = self.root / 'bin'; bin_dir.mkdir(mode=0o700)
         dump = bin_dir / 'mysqldump'
-        dump.write_text('#!/usr/bin/env python3\nimport sys\nsys.stdout.buffer.write(' + repr(SQL) + ')\n'); dump.chmod(0o700)
+        dump.write_text('#!/usr/bin/env python3\nimport sys\nassert not any(arg.startswith("--connect-timeout") for arg in sys.argv), "mysqldump does not support mysql client connect-timeout"\nassert "--no-tablespaces" in sys.argv and "--single-transaction" in sys.argv\nsys.stdout.buffer.write(' + repr(SQL) + ')\n'); dump.chmod(0o700)
         mysql = bin_dir / 'mysql'
         mysql.write_text('''#!/usr/bin/env python3
 import sys
@@ -134,6 +134,29 @@ else:
         self.assertEqual(restored['status'], 'verified_isolated_database')
         report_dir = self.root / 'rehearsals' / restored['targetDatabase']
         self.assertEqual([path.name for path in report_dir.iterdir()], ['rehearsal.json'])
+
+    def test_reserved_quoted_column_names_are_not_commands(self):
+        sql = self.root / 'quoted-columns.sql'
+        sql.write_text('CREATE TABLE `sample` (`event` text, `schema` int); INSERT INTO `sample` VALUES (\'safe\',1);')
+        br.validate_sql(sql)
+        for statement in ['CREATE TABLE `sample` (`event` text); DROP TABLE `sample`;', 'GRANT SELECT ON `sample` TO `somebody`;', 'INSERT INTO `other`.`sample` VALUES (1);', 'SET GLOBAL event_scheduler=ON;']:
+            sql.write_text(statement)
+            with self.assertRaises(br.SafetyError): br.validate_sql(sql)
+
+    def test_schema_reconciliation_removes_only_own_database_qualification(self):
+        from mysql_roundtrip_drill import schema_fingerprint
+        metadata = b'["table","InnoDB","utf8mb4_unicode_ci"]\n["column",1,"label","varchar(100)","utf8mb4","utf8mb4_unicode_ci"]\n["foreign","fk_parent","SELF","parent"]\n'
+        with patch.object(br, 'run', return_value=metadata) as run:
+            source = schema_fingerprint([], 'civicpath_test_abcdef', 'sample')
+            restored = schema_fingerprint([], 'cp_restore_20261103_abcdef123456', 'sample')
+            self.assertEqual(source, restored)
+            query = run.call_args.kwargs['input'].decode()
+            for field in ['CHARACTER_SET_NAME', 'COLLATION_NAME', 'GENERATION_EXPRESSION', 'UPDATE_RULE', 'DELETE_RULE', 'CHECK_CLAUSE', 'IS_VISIBLE', 'COLUMN_DEFAULT']:
+                self.assertIn(field, query)
+        for changed in [metadata.replace(b'utf8mb4_unicode_ci', b'utf8mb4_bin'), metadata.replace(b'"SELF"', b'"other_schema"')]:
+            with patch.object(br, 'run', return_value=changed):
+                self.assertNotEqual(source, schema_fingerprint([], 'civicpath_test_abcdef', 'sample'))
+        with self.assertRaises(br.SafetyError): schema_fingerprint([], 'unsafe.schema', 'sample')
 
 if __name__ == '__main__':
     unittest.main()

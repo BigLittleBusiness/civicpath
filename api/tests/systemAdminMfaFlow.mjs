@@ -19,8 +19,13 @@ let administrator;
 
 async function request(path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, { ...options, headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}), ...(options.headers || {}) } });
-  const setCookie = response.headers.get('set-cookie');
-  if (setCookie) cookie = setCookie.split(';')[0];
+  const jar = new Map(cookie.split(';').map((pair) => pair.trim()).filter(Boolean).map((pair) => [pair.slice(0, pair.indexOf('=')), pair.slice(pair.indexOf('=') + 1)]));
+  for (const header of response.headers.getSetCookie()) {
+    const pair = header.split(';')[0]; const separator = pair.indexOf('=');
+    const name = pair.slice(0, separator); const value = pair.slice(separator + 1);
+    if (value) jar.set(name, value); else jar.delete(name);
+  }
+  cookie = [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
   const body = response.status === 204 ? {} : await response.json();
   if (!response.ok) throw new Error(`${path}: ${body.error || response.status}`);
   return body;

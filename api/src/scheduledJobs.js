@@ -1,24 +1,24 @@
 import cron from 'node-cron';
 import { env } from './config/env.js';
-import { retryPendingPulseNotifications } from './services/pulseNotifications.js';
-import { retryPendingContactNotifications } from './services/contactNotifications.js';
-import { evaluateStrategyAlerts } from './services/strategyAlerts.js';
-
-export function registerScheduledJobs() {
-  if (env.nodeEnv === 'test') return;
-  cron.schedule('0 7 * * 1-5', () => {
-    // The notification service will evaluate due work, grant deadlines and acquittals.
-    // Delivery remains disabled until SES configuration and notification preferences are complete.
-    console.info('[civicpath] scheduled due-date review started');
-  }, { timezone: 'Australia/Sydney' });
-  cron.schedule('*/15 * * * *', () => retryPendingPulseNotifications()
-    .then(({ attempted }) => attempted && console.info(`[civicpath] retried ${attempted} pending Pulse notifications`))
-    .catch((error) => console.error('[civicpath] Pulse notification retry failed', error)), { timezone: 'Australia/Sydney' });
-  cron.schedule('*/15 * * * *', () => retryPendingContactNotifications()
-    .then(({ attempted }) => attempted && console.info(`[civicpath] retried ${attempted} pending contact notifications`))
-    .catch((error) => console.error('[civicpath] contact notification retry failed', error)), { timezone: 'Australia/Sydney' });
-  // Creates in-app accountability alerts only; external delivery remains opt-in until notification preferences are configured.
-  cron.schedule('10 6 * * 1-5', () => evaluateStrategyAlerts()
-    .then(({ created, resolved }) => (created || resolved) && console.info(`[civicpath] strategy alerts refreshed: ${created} created, ${resolved} resolved`))
-    .catch((error) => console.error('[civicpath] strategy alert refresh failed', error)), { timezone: 'Australia/Sydney' });
+import { jobHeartbeats, runSafeNotificationCycle } from './backendRuntime.js';
+let registration;
+// Only the policy/entitlement-scoped reliable notification worker is commissioned.
+// Legacy public transports lack this opt-in contract; strategyAlerts is unbounded.
+// Neither is registered as healthy work. No log-only placeholder remains.
+export async function registerScheduledJobs({ schedule = cron.schedule, registry = jobHeartbeats, cycle = runSafeNotificationCycle, nodeEnv = env.nodeEnv } = {}) {
+  if (nodeEnv === 'test') return { enabled: false };
+  if (registration) return registration;
+  registry.register('reliable_notifications', { maxAgeMs: 25 * 60_000, maxRunMs: 15 * 60_000 });
+  let running = false;
+  const run = async () => {
+    if (running) return { skippedOverlap: true };
+    running = true;
+    try { return await registry.run('reliable_notifications', cycle); }
+    finally { running = false; }
+  };
+  const task = schedule('*/15 * * * *', () => run().catch(() => console.error('[civicpath] reliable notification cycle failed')), { timezone: 'Australia/Sydney' });
+  registration = { enabled: true, task, run };
+  // Genuine finite current-policy sweep; failure leaves readiness unready.
+  await run().catch(() => console.error('[civicpath] startup notification catch-up failed'));
+  return registration;
 }

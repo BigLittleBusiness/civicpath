@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { ContextualHelpLink } from './RoleHelpPanel';
 
+export const invitationDeliveryMessage = (status) => status === 'accepted' ? 'Invitation accepted by the configured email provider; inbox delivery is not confirmed.' : status === 'disabled' ? 'Invitation created; email delivery is disabled. Regenerate a fresh invitation through People & access when delivery is available.' : status === 'failed' ? 'Invitation created, but email acceptance failed. Regenerate a fresh invitation; do not resend an old security link.' : 'Invitation created; email acceptance is uncertain or not recorded. Do not replay the old link; use fresh invitation regeneration.';
 const blankInvitation = { firstName: '', lastName: '', email: '', role: 'contributor' };
 const dateLabel = (value) => value ? new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value)) : '—';
 const roleLabel = (code) => String(code || '').split('_').map((word) => word[0]?.toUpperCase() + word.slice(1)).join(' ');
@@ -40,7 +41,7 @@ export function PeopleAccessPanel() {
     try {
       const response = await api.post('/workspace/members', invitation);
       const status = response.data.data?.delivery?.status;
-      toast.success(status === 'sent' ? 'Invitation sent securely.' : 'Invitation created. Transactional delivery is not yet configured.');
+      toast.success(invitationDeliveryMessage(status));
       setInvitation(blankInvitation); setInviteOpen(false); await load();
     } catch (requestError) { toast.error(requestError.response?.data?.error || 'The invitation could not be created.'); }
     finally { setSaving(false); }
@@ -55,7 +56,7 @@ export function PeopleAccessPanel() {
   const resend = async (member) => {
     try {
       const response = await api.post(`/workspace/members/${member.id}/resend-invitation`);
-      toast.success(response.data.data?.delivery?.status === 'sent' ? 'A fresh secure invitation was sent.' : 'A fresh invitation was created. Transactional delivery is not yet configured.');
+      toast.success(invitationDeliveryMessage(response.data.data?.delivery?.status));
       await load();
     } catch (requestError) { toast.error(requestError.response?.data?.error || 'The invitation could not be resent.'); }
   };
@@ -93,10 +94,10 @@ export function PeopleAccessPanel() {
           <div><select aria-label={`Role for ${member.firstName} ${member.lastName}`} value={member.role} disabled={member.status === 'disabled'} onChange={(event) => updateRole(member, event.target.value)}>{roles.map((role) => <option key={role.code} value={role.code}>{role.label}</option>)}</select></div>
           <div><span className={`member-status ${member.status}`}>{member.status === 'invited' ? 'Invitation pending' : member.status}</span>{member.status === 'invited' && member.invitationExpiresAt ? <small>Expires {dateLabel(member.invitationExpiresAt)}</small> : null}</div>
           <div><small>{member.lastLoginAt ? dateLabel(member.lastLoginAt) : member.status === 'invited' ? 'Not yet accepted' : 'No sign-in recorded'}</small></div>
-          <div className="member-actions">{member.status === 'invited' ? <button className="text-action" type="button" onClick={() => resend(member)}>Resend</button> : null}{member.status === 'disabled' ? <button className="text-action" type="button" onClick={() => reinvite(member)}>Re-invite</button> : null}{member.status !== 'disabled' && !member.isCurrentUser ? <button className="text-action danger-action" type="button" onClick={() => beginRemoval(member)}>Remove access</button> : null}</div>
+          <div className="member-actions">{member.status === 'invited' ? <button className="text-action" type="button" onClick={() => resend(member)}>Regenerate invitation</button> : null}{member.status === 'disabled' ? <button className="text-action" type="button" onClick={() => reinvite(member)}>Re-invite</button> : null}{member.status !== 'disabled' && !member.isCurrentUser ? <button className="text-action danger-action" type="button" onClick={() => beginRemoval(member)}>Remove access</button> : null}</div>
         </div>)}
       </div>
-      <p className="people-access-note">{workspace?.name || 'This Council'} can invite people before they need access. Pending invitations use a one-time link that expires after 7 days; resend creates a new link and invalidates the previous one.</p>
+      <p className="people-access-note">{workspace?.name || 'This Council'} can invite people before they need access. Pending invitations use a one-time link that expires after 7 days; regeneration creates a new link and invalidates the previous one.</p>
     </section>
 
     {inviteOpen ? <div className="modal-backdrop" role="presentation"><section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="invite-member-title"><div className="modal-head"><div><p className="card-eyebrow">People & access</p><h2 id="invite-member-title">Invite a Council user</h2></div><button className="modal-close" type="button" onClick={() => setInviteOpen(false)} aria-label="Close invitation">×</button></div><p className="modal-intro">They will receive a one-time email link to set a password. The invitation expires after 7 days and does not expose Council information before acceptance.</p><form className="modal-grid" onSubmit={submitInvitation}><label>First name<input value={invitation.firstName} onChange={(event) => updateInvitation('firstName', event.target.value)} autoComplete="given-name" required/></label><label>Last name<input value={invitation.lastName} onChange={(event) => updateInvitation('lastName', event.target.value)} autoComplete="family-name" required/></label><label className="modal-full">Work email<input type="email" value={invitation.email} onChange={(event) => updateInvitation('email', event.target.value)} autoComplete="email" required/></label><label className="modal-full">Role<select value={invitation.role} onChange={(event) => updateInvitation('role', event.target.value)}>{roles.map((role) => <option key={role.code} value={role.code}>{role.label} — {role.description}</option>)}</select></label><div className="modal-actions modal-full"><button className="secondary-button" type="button" onClick={() => setInviteOpen(false)}>Cancel</button><button className="primary-button" disabled={saving} type="submit">{saving ? 'Creating invitation…' : 'Send secure invitation'}</button></div></form></section></div> : null}

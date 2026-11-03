@@ -10,6 +10,7 @@ import { v1Router } from './routes/v1/index.js';
 import { stripeWebhook } from './controllers/stripeBillingController.js';
 import { errorHandler, notFound } from './middleware/errors.js';
 import { registerScheduledJobs } from './scheduledJobs.js';
+import { createNotificationFeedbackRouter } from './routes/v1/notifications.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -17,6 +18,8 @@ app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors({ origin(origin, callback) { if (!origin || env.corsOrigins.includes(origin)) return callback(null, true); return callback(new Error('Origin is not allowed by CivicPath CORS policy.')); }, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }));
 // Stripe signature verification requires the unparsed request body and must run before express.json().
 app.post('/v1/billing/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }), stripeWebhook);
+// Default verifier has no trust pins: disabled until separately commissioned.
+app.use('/v1/provider-feedback/notifications', createNotificationFeedbackRouter());
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use('/v1/auth/login', rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many sign-in attempts. Please try again later.' } }));
@@ -34,7 +37,7 @@ app.use(errorHandler);
 
 async function start() {
   await sequelize.authenticate();
-  registerScheduledJobs();
+  await registerScheduledJobs();
   app.listen(env.port, () => console.info(`CivicPath API listening on ${env.port}`));
 }
 

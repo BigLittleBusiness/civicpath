@@ -1,3 +1,4 @@
+import { enqueueCollaborationNotification } from '../services/notificationReliabilityService.js';
 import Joi from 'joi';
 import { Op } from 'sequelize';
 import {
@@ -96,7 +97,11 @@ async function notify({ organizationId, userIds, actorId, resourceType, resource
   if (!ids.length) return;
   const recipients = await User.findAll({ where: { id: ids, organizationId, status: 'active' }, attributes: ['id'], transaction });
   if (!recipients.length) return;
-  await CollaborationNotification.bulkCreate(recipients.map((user) => ({ organizationId, userId: user.id, resourceType, resourceId, notificationType, title, detail })), { transaction });
+  if (!transaction) throw new Error('Collaboration notifications require the business transaction.');
+  for (const user of recipients) {
+    const notification = await CollaborationNotification.create({ organizationId, userId: user.id, resourceType, resourceId, notificationType, title, detail }, { transaction });
+    await enqueueCollaborationNotification({ notification, transaction });
+  }
 }
 
 async function audit(req, entityType, entityId, action, metadata = {}, transaction) {

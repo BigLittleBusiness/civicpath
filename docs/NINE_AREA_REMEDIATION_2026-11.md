@@ -1,0 +1,38 @@
+# CivicPath: nine-area remediation and commissioning
+
+**Scope:** the standalone CivicPath application in `BigLittleBusiness/civicpath`, `app` branch. Marketing and `main` are not changed. Application verification is not production deployment or independent security certification.
+
+## Council-facing outcomes
+
+| Area | Implemented outcome | Important boundary |
+| --- | --- | --- |
+| 1. Trustworthy workspace data and setup | Persisted owner/team setup checks; no fabricated live/demo fallback; genuine zero and unavailable states; complete active-register dashboard totals; server-side archive filtering. | Demonstration tenants remain explicitly labelled. More than 5,000 active projects/work/evidence records produces an explicit size error instead of silently incomplete totals. |
+| 2. Record maintenance and recovery | Governed editing across projects, work, evidence, actions, milestones, measures, funding positions, stakeholders, risks and decisions; same-tenant selectors; manager archive/restore; standalone archive recovery; monotonic revisions and timestamp conflict checks; required audits inside transactions. | Contributors can change only their permitted assigned delivery fields. Executives remain read-only. Historical authorship is not rewritten. |
+| 3. Collaboration and reporting authority | Persisted-current-actor checks, active tenant enforcement, stale-write checks, independent quarterly reviewer rules, restricted inclusion authority and atomic review transitions; no legacy route bypasses. | A Review Pack facilitates an internal meeting; it is not external sharing, public consultation or independent approval of council policy. |
+| 4. Practical, defensible reporting | Period selectors, genuine evidence-link and included-update metrics, currency-separated totals, immutable versioned draft snapshots, history, JSON/CSV/printable HTML output. | Snapshot content is the live register at generation plus selected-period included updates, not a reconstructed period-end register, formal council approval or verified outcome. |
+| 5. Suspension and recovery boundaries | Backend tenant-state enforcement across real routes; operations-only platform sessions; ended-subscription council billing/data recovery; Stripe payment cannot reverse security suspension or closure. | Billing, support and data-recovery access never overrides an independent suspended/closed/unknown tenant-state gate. |
+| 6. Usable funding lifecycle | Council-owned manual grant/pathway creation, edit, governed transitions, evidence/work-item links, archive, bounded list and safe export; explicit provenance. | There is no connected external opportunity catalogue. Legacy grant CSV commits are disabled; the UI and FAQs say so. Project CSV remains a distinct preview/explicit-commit path. |
+| 7. Reliable, controlled communications | Own-user inbox/preferences; manager organization policy; opt-in, quiet hours and digest/reminder controls; durable outbox with leases, retries/dead-letter handling, uncertain-send handling, signed feedback pins and recipient suppression; business notifications enqueue with their audit in the originating transaction. | Provider acceptance is not inbox delivery. Uncertain sends are not automatically replayed. SES and pinned feedback must be commissioned before claiming live delivery. |
+| 8. Council data ownership and exit | Positive-allowlist, bounded authenticated tenant exports; archive/provenance/preferences retained; secret/foreign-reference scrubbing; private attachment delivery requests; retention hold and human-approved closure/erasure requests. | Erasure is a controlled human-verified procedure, not an automatic irreversible delete. Backup/object-version treatment must be verified and approved. |
+| 9. Operational resilience and launch evidence | Liveness/readiness separation, real finite scheduler heartbeat/catch-up, overlap protection, backup/restore tooling, encrypted MySQL round-trip drill, security-negative tests, representative-volume API test and responsive five-role browser checks. | Local verification cannot certify the Binary Lane VPS, off-host backups or external services. Those require an authorized production commissioning record. |
+
+## Notable shared safeguards
+
+All capability permissions are enforced by the API, not by hidden buttons or help filtering. Managers and contributors use persisted actor identity/session state and same-tenant references. Required audit failures roll back their business writes. Archive predicates apply before SQL limits for active views. Maintenance returns the database-persisted timestamp after writes, avoiding immediate false conflicts caused by MySQL DATETIME precision. Structured API error logging excludes raw exception objects, SQL, parameters and credentials.
+
+The five role-help catalogues retain 30 answers each and their Top 10 defaults. Import/report answers are aligned with the current safe paths. Help content does not grant additional permissions or transmit raw searches to external analytics.
+
+## Deployment sequence
+
+1. Review the final verification record and the scoped app-branch release. Do not promote or deploy `main` implicitly.
+2. Create a verified backup and recovery point. Confirm expected VPS capacity, disk space, off-host retention and rollback ownership.
+3. Install the locked dependencies and run both production dependency audit gates. Frontend build-time tools must be included during compilation; only the compiled static build is served by Nginx. Never start the CRA development server in production.
+4. Run `npm run db:migrate` from `api`. Its filename-sorted runner covers the existing `001`–`014` migrations and new additive `015_record_maintenance`, `017_notification_reliability`, `019_funding_lifecycle`, `020_tenant_lifecycle` migrations. Numeric gaps do not indicate missing files. Do not substitute destructive `sync({ alter: true })` or a demo seed.
+5. Deploy the matching API and frontend bundle. Verify HTTPS, restrictive origins/cookies, mandatory platform MFA, council role/state gates, failed-write rollback, editing conflicts and archive/report consistency.
+6. Commission only approved external integrations. Stripe test checkout/webhook/portal/refund, SES acceptance and signed feedback, private S3 upload/download/versioning, Zoho inward mail, actual Binary Lane recovery and off-host storage remain separately verified activities. Never expose provider credentials in browser code, source, reports or command output.
+7. Configure one approved scheduler owner. Its bounded safe notification worker performs genuine catch-up; a successful empty sweep is not email-delivery evidence. The old unbounded strategy-alert worker and legacy public contact/Pulse retry transports are not silently scheduled. Multiple processes or external workers require a commissioned shared/durable health adapter rather than treating one process's heartbeat as universal health.
+8. Run the real HTTPS five-role smoke tests on the deployed candidate and record launch approval. Test environment fixtures must not be seeded into a customer or production tenant.
+
+## Verification references
+
+Use the parent release verification summary for observed counts and metrics. Detailed workstream contracts are recorded in `REMEDIATION_MAINTENANCE.md`, `REMEDIATION_REPORTING.md`, `REMEDIATION_FUNDING.md`, `REMEDIATION_NOTIFICATIONS.md`, `REMEDIATION_LIFECYCLE.md`, `REMEDIATION_RESILIENCE.md`, `REMEDIATION_BACKEND_INTEGRATION.md` and `REMEDIATION_FRONTEND_INTEGRATION.md`. Historical workstream-only tests do not replace the final integrated database/browser gates.

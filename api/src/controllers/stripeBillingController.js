@@ -72,13 +72,24 @@ async function activateVerifiedPurchase({ organization, subscription, plan, stri
   if (!organization || !subscription) return null;
   const wasInactive = subscription.status !== 'active';
   const endAt = subscriptionPeriodEnd(stripeSubscription) || (plan?.code === 'council-proof' ? new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) : subscription.endsAt);
-  await subscription.update({ planId: plan?.id || subscription.planId, status: 'active', billingProvider: 'stripe', billingReference: stripeSubscription?.id || subscription.billingReference, startsAt: subscription.startsAt || new Date(), endsAt: endAt, entitlements: { ...(subscription.entitlements || {}), stripeStatus: stripeSubscription?.status || 'paid', lastVerifiedEventId: eventId, verifiedAt: new Date().toISOString() } });
-  await organization.update({ status: 'active', planCode: plan?.code || organization.planCode });
-  const invitedUsers = await User.findAll({ where: { organizationId: organization.id, status: 'invited' } });
-  if (invitedUsers.length) await User.update({ status: 'active' }, { where: { id: { [Op.in]: invitedUsers.map((user) => user.id) } } });
-  await AuditLog.create({ organizationId: organization.id, userId: null, entityType: 'billing', entityId: subscription.id, action: 'stripe_payment_verified_access_activated', metadata: { stripeEventId: eventId, planCode: plan?.code || organization.planCode, stripeSubscriptionId: stripeSubscription?.id || null } });
-  if (wasInactive && invitedUsers.length) {
-    const primary = invitedUsers[0];
+  const result = await sequelize.transaction(async (transaction) => {
+    const current = await Organization.findOne({ where: { id: organization.id }, transaction, lock: transaction.LOCK.UPDATE });
+    if (!current) return { invitedUsers: [], accessActivated: false };
+    // Provider payment truth may update the subscription, never restore suspended
+    // or unknown/closed workspace access. Manual restoration remains independent.
+    await subscription.update({ planId: plan?.id || subscription.planId, status: 'active', billingProvider: 'stripe', billingReference: stripeSubscription?.id || subscription.billingReference, startsAt: subscription.startsAt || new Date(), endsAt: endAt, entitlements: { ...(subscription.entitlements || {}), stripeStatus: stripeSubscription?.status || 'paid', lastVerifiedEventId: eventId, verifiedAt: new Date().toISOString() } }, { transaction });
+    const accessActivated = ['trial', 'active'].includes(current.status);
+    let invitedUsers = [];
+    if (accessActivated) {
+      await current.update({ status: 'active', planCode: plan?.code || current.planCode }, { transaction });
+      invitedUsers = await User.findAll({ where: { organizationId: current.id, status: 'invited' }, transaction });
+      if (invitedUsers.length) await User.update({ status: 'active' }, { where: { organizationId: current.id, id: { [Op.in]: invitedUsers.map((user) => user.id) }, status: 'invited' }, transaction });
+    }
+    await AuditLog.create({ organizationId: current.id, userId: null, entityType: 'billing', entityId: subscription.id, action: accessActivated ? 'stripe_payment_verified_access_activated' : 'stripe_payment_verified_access_preserved', metadata: { stripeEventId: eventId, planCode: plan?.code || current.planCode, stripeSubscriptionId: stripeSubscription?.id || null } }, { transaction });
+    return { invitedUsers, accessActivated };
+  });
+  if (wasInactive && result.accessActivated && result.invitedUsers.length) {
+    const primary = result.invitedUsers[0];
     await sendTransactionalEmail({ to: primary.email, organizationId: organization.id, userId: primary.id, category: 'account_activated', message: accountActivatedMessage({ firstName: primary.firstName, organisationName: organization.name, planName: plan?.name || 'CivicPath', signInUrl: new URL('/login', env.frontendUrl).toString() }) });
   }
   return subscription;

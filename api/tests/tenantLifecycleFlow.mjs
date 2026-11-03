@@ -28,7 +28,7 @@ async function request(pathname, { actor, method = 'GET', body, elevated = false
   if (raw) return { text, response }; const json = JSON.parse(text); return json.data || json;
 }
 async function createTenant(name) { const organization = await Organization.create({ name: `Lifecycle isolated ${name} ${suffix}`, slug: `lifecycle-${name}-${suffix}`, organisationType: 'council', status: 'active' }); tenants.push(organization.id); return organization; }
-async function createUser(organizationId, role) { const actor = await User.create({ organizationId, email: `lifecycle-${role}-${crypto.randomUUID().slice(0, 8)}@example.invalid`, firstName: 'Isolated', lastName: 'Lifecycle', role, status: 'active', passwordHash: marker('PASSWORD_HASH'), mfaSecretEncrypted: { ciphertext: marker('MFA_SECRET') }, mfaRecoveryCodes: [marker('MFA_RECOVERY')] }); actors.push(actor.id); return actor; }
+async function createUser(organizationId, role) { const actor = await User.create({ organizationId, email: `lifecycle-${role}-${crypto.randomUUID().slice(0, 8)}@example.invalid`, firstName: 'Isolated', lastName: 'Lifecycle', role, status: 'active', mfaEnabled: role === 'platform_admin', passwordHash: marker('PASSWORD_HASH'), mfaSecretEncrypted: { ciphertext: marker('MFA_SECRET') }, mfaRecoveryCodes: [marker('MFA_RECOVERY')] }); actors.push(actor.id); return actor; }
 const approve = { decision: 'approve', note: 'Independent Council authority and preservation inventory verified in isolated test.', humanVerified: true, backupTreatmentVerified: true, objectVersionsVerified: true, approvalReference: 'ISOLATED-APPROVAL-001' };
 try {
   await sequelize.authenticate();

@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 const AuthContext = createContext(null);
 
 // Session user plus the access and organisation fields returned alongside it by the auth endpoints.
-const toSessionUser = (data) => ({ ...data.user, accessActive: data.accessActive, subscriptionStatus: data.subscriptionStatus, subscriptionPlanCode: data.subscriptionPlanCode, subscriptionEndsAt: data.subscriptionEndsAt, organisationName: data.organisationName, organisationIsDemo: data.organisationIsDemo });
+export const toSessionUser = (data) => ({ ...data.user, accessActive: data.accessActive, subscriptionStatus: data.subscriptionStatus, subscriptionPlanCode: data.subscriptionPlanCode, subscriptionEndsAt: data.subscriptionEndsAt, organisationName: data.organisationName, organisationIsDemo: data.organisationIsDemo, organisationStatus: data.organisationStatus, operationsOnly: data.operationsOnly === true });
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);

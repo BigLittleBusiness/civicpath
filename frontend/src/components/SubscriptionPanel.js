@@ -4,9 +4,13 @@ import { Icon } from './Icon';
 import { ContextualHelpLink } from './RoleHelpPanel';
 import { formatAud, formatCents, formatDate, statusLabel } from '../lib/billingFormat';
 import './SubscriptionPanel.css';
+import { useAuth } from '../features/AuthContext';
 
 // Workspace settings: current subscription for every council role; invoices and billing actions for the org admin.
 export function SubscriptionPanel() {
+  const { user } = useAuth();
+  const council = ['org_admin', 'portfolio_manager', 'contributor', 'executive'].includes(user?.role);
+  const isOrgAdmin = user?.role === 'org_admin';
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -14,21 +18,25 @@ export function SubscriptionPanel() {
   const [annualPlans, setAnnualPlans] = useState([]);
 
   useEffect(() => {
+    if (!council) return;
     api.get('/billing/subscription').then((response) => setSummary(response.data.data)).catch((err) => setError(err.response?.data?.error || 'Subscription details could not be loaded.'));
     api.get('/public/plans').then((response) => setAnnualPlans(response.data.data.filter((plan) => plan.code !== 'council-proof').sort((a, b) => b.annualPriceAud - a.annualPriceAud).map((plan) => [plan.code, plan.name, Number(plan.annualPriceAud)]))).catch(() => setAnnualPlans([]));
-  }, []);
+  }, [council]);
 
   const openPortal = async () => {
+    if (!isOrgAdmin) return;
     setError(''); setBusy(true);
     try { const response = await api.post('/billing/customer-portal'); window.location.assign(response.data.data.url); }
     catch (err) { setError(err.response?.data?.error || 'The billing portal could not be opened. Please try again.'); setBusy(false); }
   };
   const startConversion = async () => {
+    if (!isOrgAdmin) return;
     setError(''); setBusy(true);
     try { const response = await api.post('/billing/council-proof-conversion-checkout', { targetPlanCode: conversionPlan }); window.location.assign(response.data.data.checkoutUrl); }
     catch (err) { setError(err.response?.data?.error || 'The upgrade checkout could not be opened.'); setBusy(false); }
   };
 
+  if (!council) return null;
   if (!summary && !error) return <section className="settings-card sub-panel"><div className="sub-panel-loading"><span/>Loading subscription…</div></section>;
   if (!summary) return <section className="settings-card sub-panel"><p className="card-eyebrow">Subscription</p><p className="sub-panel-error">{error}</p></section>;
 
@@ -59,7 +67,7 @@ export function SubscriptionPanel() {
     {sub?.cancelAtPeriodEnd ? <p className="sub-panel-note is-warn">This subscription will end on {formatDate(sub.endsAt)} and will not renew.</p> : null}
     {sub?.status === 'past_due' ? <p className="sub-panel-note is-critical">The latest payment failed. Update your payment details in the billing portal to restore access.</p> : null}
 
-    {conversion?.available && annualPlans.length ? <div className="sub-panel-upgrade">
+    {isOrgAdmin && conversion?.available && annualPlans.length ? <div className="sub-panel-upgrade">
       <div><b>Upgrade with your $495 Council Proof credit</b><p>Available until {formatDate(conversion.deadline)}. The full Council Proof fee comes off your first annual invoice{pricing?.gstApplies ? '; GST is calculated on the reduced amount' : ''}.</p></div>
       <div className="sub-panel-upgrade-controls">
         <div className="plan-options">{annualPlans.map(([code, name, price]) => <button key={code} type="button" className={conversionPlan === code ? 'is-active' : ''} onClick={() => setConversionPlan(code)}><b>{name}</b><span>{formatAud(price - conversion.creditAud)} first year</span><small>then {formatAud(price)} / year, excl. GST</small></button>)}</div>
@@ -67,7 +75,7 @@ export function SubscriptionPanel() {
       </div>
     </div> : null}
 
-    {billingAdmin ? <>
+    {isOrgAdmin && billingAdmin ? <>
       <div className="sub-panel-invoices">
         <div className="sub-panel-invoices-head"><b>Invoices</b>{summary.billingEmail ? <span>Sent to {summary.billingEmail}</span> : null}</div>
         {invoices.length ? <div className="sub-invoice-table">

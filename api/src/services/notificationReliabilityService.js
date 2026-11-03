@@ -1,8 +1,9 @@
+import { RecordMaintenanceState } from '../models/recordMaintenance.js';
 import crypto from 'node:crypto';
 import { Op } from 'sequelize';
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { sequelize } from '../config/database.js';
-import { Organization, User, AuditLog, CollaborationNotification, CollaborationRequest, StrategyAction, StrategicPlan, CivicProject, StrategyDecision, ActionDependency, FundingCollaborationRoom, ReviewPack, QuarterlyActionUpdate } from '../models/index.js';
+import { Organization, User, Subscription, AuditLog, CollaborationNotification, CollaborationRequest, StrategyAction, StrategicPlan, CivicProject, StrategyDecision, ActionDependency, FundingCollaborationRoom, ReviewPack, QuarterlyActionUpdate } from '../models/index.js';
 import { NotificationPreference, OrganizationNotificationPolicy, NotificationOutbox, ReliableNotificationDelivery, NotificationRecipientSuppression } from '../models/notificationReliability.js';
 import { getPulseRoutingSettings } from './pulseNotifications.js';
 import { brandedEmail, escapeEmailHtml } from './emailBranding.js';
@@ -10,14 +11,16 @@ import { DEFAULT_PREFERENCES, DEFAULT_ORG_POLICY, MAX_ATTEMPTS, MAX_BATCH, LEASE
 import { processNotificationBatch } from './notificationWorker.js';
 
 const resourceModels = { action: StrategyAction, project: CivicProject, decision: StrategyDecision, dependency: ActionDependency, funding_room: FundingCollaborationRoom, review_pack: ReviewPack, quarterly_update: QuarterlyActionUpdate };
+const resourceMaintenanceKinds = { action: 'actions', project: 'projects', decision: 'decisions', risk: 'risks', funding_position: 'funding' };
 const plain = (record) => record?.get ? record.get({ plain: true }) : record;
 export const sesConfigured = (config) => Boolean(config?.emailEnabled && config.awsCredentialsConfigured && config.fromEmail && config.awsRegion);
 export async function currentNotificationContext(organizationId, userId, transaction) {
-  const [user, organization, preference, policy] = await Promise.all([
+  const [user, organization, preference, policy, subscription] = await Promise.all([
     User.findOne({ where: { id: userId, organizationId }, transaction }), Organization.findByPk(organizationId, { transaction }),
     NotificationPreference.findOne({ where: { organizationId, userId }, transaction }), OrganizationNotificationPolicy.findOne({ where: { organizationId }, transaction }),
+    Subscription.findOne({ where: { organizationId, status: 'active', [Op.or]: [{ endsAt: null }, { endsAt: { [Op.gt]: new Date() } }] }, attributes: ['id'], transaction }),
   ]);
-  return { user: plain(user), organization: plain(organization), preferences: preference ? { emailEnabled: preference.emailEnabled, frequency: preference.frequency, quietStart: preference.quietStart, quietEnd: preference.quietEnd, timezone: preference.timezone } : { ...DEFAULT_PREFERENCES }, policy: policy ? { emailEnabled: policy.emailEnabled, digestsEnabled: policy.digestsEnabled, remindersEnabled: policy.remindersEnabled } : { ...DEFAULT_ORG_POLICY } };
+  return { entitled: Boolean(subscription), user: plain(user), organization: plain(organization), preferences: preference ? { emailEnabled: preference.emailEnabled, frequency: preference.frequency, quietStart: preference.quietStart, quietEnd: preference.quietEnd, timezone: preference.timezone } : { ...DEFAULT_PREFERENCES }, policy: policy ? { emailEnabled: policy.emailEnabled, digestsEnabled: policy.digestsEnabled, remindersEnabled: policy.remindersEnabled } : { ...DEFAULT_ORG_POLICY } };
 }
 export async function notificationSourceIsCurrent(row, now = new Date(), transaction) {
   let source;
@@ -30,6 +33,16 @@ export async function notificationSourceIsCurrent(row, now = new Date(), transac
   if (!Model) return false;
   const resource = await Model.findOne({ where: { id: source.resourceId, organizationId: row.organizationId }, transaction });
   if (!resource || resource.isActive === false || ['archived', 'closed', 'complete', 'completed', 'not_proceeding', 'resolved'].includes(resource.status) || resource.stage === 'completed' || resource.handoverStatus === 'declined') return false;
+  const kind = resourceMaintenanceKinds[source.resourceType];
+  if (kind && await RecordMaintenanceState.findOne({ where: { organizationId: row.organizationId, kind, recordId: resource.id, archivedAt: { [Op.ne]: null } }, attributes: ['id'], transaction })) return false;
+  if (resource.projectId) {
+    const project = await CivicProject.findOne({ where: { id: resource.projectId, organizationId: row.organizationId }, attributes: ['id'], transaction });
+    if (!project || await RecordMaintenanceState.findOne({ where: { organizationId: row.organizationId, kind: 'projects', recordId: resource.projectId, archivedAt: { [Op.ne]: null } }, attributes: ['id'], transaction })) return false;
+  }
+  if (resource.actionId) {
+    const action = await StrategyAction.findOne({ where: { id: resource.actionId, organizationId: row.organizationId, isActive: true }, attributes: ['id'], transaction });
+    if (!action || await RecordMaintenanceState.findOne({ where: { organizationId: row.organizationId, kind: 'actions', recordId: resource.actionId, archivedAt: { [Op.ne]: null } }, attributes: ['id'], transaction })) return false;
+  }
   if (resource.strategyId && !await StrategicPlan.findOne({ where: { id: resource.strategyId, organizationId: row.organizationId, status: 'active' }, transaction })) return false;
   return true;
 }
@@ -45,7 +58,7 @@ async function enqueueSource({ source, sourceType, kind, transaction, now }) {
   const reference = { organizationId, userId, sourceType, sourceId: source.id, kind };
   if (!await notificationSourceIsCurrent(reference, now, transaction)) return { created: 0 };
   const schedules = [{ channel: 'in_app', eventKey: eventHash(`${sourceType}:${source.id}:${kind}:${kind === 'collaboration_reminder' ? now.toISOString().slice(0, 10) : 'event'}`), availableAt: now }];
-  if (!emailGate({ ...context, configured: true, kind })) {
+  if (context.entitled && !emailGate({ ...context, configured: true, kind })) {
     const schedule = scheduleEmail(now, context.preferences);
     schedules.push({ channel: 'email', eventKey: eventHash(`${kind}:${schedule.bucket}`), availableAt: schedule.availableAt, frequency: context.preferences.frequency, timezone: context.preferences.timezone });
   }
@@ -112,6 +125,7 @@ export function createNotificationStore({ organizationIds = [], getConfiguration
       const context = await currentNotificationContext(row.organizationId, row.userId);
       if (emailGate({ ...context, configured: true, kind: row.kind }) === 'inactive') return { suppression: 'inactive' };
       if (!await notificationSourceIsCurrent(row, now)) return { suppression: 'stale_source' };
+      if (!context.entitled) return { suppression: 'entitlement_inactive' };
       if (row.channel === 'in_app') return {};
       if (row.frequency !== context.preferences.frequency || row.timezone !== context.preferences.timezone) return { suppression: 'schedule_changed' };
       const config = await getConfiguration();

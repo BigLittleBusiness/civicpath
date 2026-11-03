@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import React from 'react';
+import { useAuth } from '../features/AuthContext';
+import { ReliableNotificationDeliveryPanel } from './ReliableNotificationDeliveryPanel';
 
-const date = (value) => value ? new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '—';
+export const deliveryOutcomeLabel = (status) => status === 'sent' || status === 'accepted' ? 'Provider accepted — inbox delivery not confirmed' : status === 'delivered' ? 'Provider delivery event — not proof of read' : status === 'uncertain' ? 'Acceptance uncertain — never replay' : status;
 
 export function NotificationDeliveryPanel() {
-  const [records, setRecords] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
-  useEffect(() => { api.get('/admin/notification-delivery').then((response) => setRecords(response.data.data)).catch((requestError) => setError(requestError.response?.data?.error || 'Message delivery records could not be loaded.')).finally(() => setLoading(false)); }, []);
-  return <section className="admin-section"><div className="admin-card delivery-monitor"><div className="admin-card-head"><div><p className="card-eyebrow">Transactional email operations</p><h3>Message delivery monitor</h3><p className="admin-copy">Only outcome data is retained: no email body, password-reset token or invitation link is stored here. Failed security links should be regenerated through their original flow, never resent from historical content.</p></div></div>{loading ? <div className="admin-loading">Loading message outcomes…</div> : error ? <p className="form-message">{error}</p> : records.length ? <div className="delivery-list">{records.map((record) => <article key={record.id}><span className={`delivery-state ${record.status}`}>{record.status}</span><div><b>{record.subject}</b><p>{record.category.replace(/_/g, ' ')} · {record.Organization?.name || 'Platform notification'} · {date(record.createdAt)}</p><small>{record.retryGuidance}</small>{record.error ? <em>{record.error}</em> : null}</div></article>)}</div> : <div className="admin-empty"><span>✓</span><div><b>No transactional delivery records yet</b><p>Account, invitation, billing and password-reset outcomes will appear here once messages are attempted.</p></div></div>}</div></section>;
+  const { user } = useAuth();
+  if (user?.role === 'org_admin') return <ReliableNotificationDeliveryPanel/>;
+  if (user?.role !== 'platform_admin') return null;
+  // Tenant outcome APIs require a current organisation administrator, never an operations-only identity.
+  return <section className="admin-section"><div className="admin-card delivery-monitor"><div className="admin-card-head"><div><p className="card-eyebrow">Transactional email boundaries</p><h3>Message outcomes and secure regeneration</h3><p className="admin-copy">Council notification outcomes are available to that Council’s Organisation Administrator under Workspace settings → Notifications. Platform operations does not request tenant notification APIs or expose historical security content.</p></div></div><dl><dt>Accepted (including legacy “sent”)</dt><dd>Provider accepted the message; inbox delivery is not confirmed.</dd><dt>Delivered</dt><dd>A verified provider delivery event, not evidence of inbox placement or a person reading it.</dd><dt>Disabled, failed or uncertain</dt><dd>Do not replay old reset or invitation content. Use the original account recovery or invitation regeneration flow to create a fresh single-use link after reviewing the outcome.</dd></dl><p>No raw tokens, message bodies or replay controls are exposed. This panel does not certify provider configuration, signed-feedback commissioning or live sending.</p></div></section>;
 }

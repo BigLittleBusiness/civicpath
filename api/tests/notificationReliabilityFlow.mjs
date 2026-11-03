@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 // Parent runs this against its isolated MySQL8 DB after migrations. Never use production.
 if (process.env.CIVICPATH_NOTIFICATION_TEST_ISOLATED !== '1' || process.env.NODE_ENV === 'production') throw new Error('Set CIVICPATH_NOTIFICATION_TEST_ISOLATED=1 only for an isolated non-production database.');
 const { sequelize } = await import('../src/config/database.js');
-const { Organization, User, CivicProject, CollaborationNotification, AuditLog } = await import('../src/models/index.js');
+const { Organization, User, CivicProject, CollaborationNotification, AuditLog, ProductPlan, Subscription } = await import('../src/models/index.js');
 const { notificationModels, NotificationOutbox, ReliableNotificationDelivery, NotificationPreference, OrganizationNotificationPolicy, NotificationFeedbackEvent, NotificationRecipientSuppression } = await import('../src/models/notificationReliability.js');
 const { enqueueCollaborationNotification, dispatchReliableNotifications, createNotificationStore } = await import('../src/services/notificationReliabilityService.js');
 const { createNotificationRepository, applyVerifiedNotificationFeedback } = await import('../src/services/notificationRepository.js');
@@ -12,7 +12,7 @@ const { createNotificationController } = await import('../src/controllers/notifi
 const { eventHash, recipientHash } = await import('../src/services/notificationPolicy.js');
 const { migrateNotificationReliability } = await import('../db/migrations/017_notification_reliability.mjs');
 const suffix = crypto.randomUUID(); const tenantIds = []; const feedbackHashes = []; const suppressedHashes = [];
-const repository = createNotificationRepository(); let sends = 0;
+const repository = createNotificationRepository(); let sends = 0; let planId;
 const fakeConfig = { emailEnabled: true, awsCredentialsConfigured: true, fromEmail: 'test@example.invalid', awsRegion: 'ap-southeast-2' };
 const store = createNotificationStore({ organizationIds: tenantIds, getConfiguration: async () => fakeConfig });
 const sender = async ({ message }) => { sends += 1; assert.equal(JSON.stringify(message).includes('DO-NOT-STORE'), false); return { providerReference: `test-ses-${suffix}-${sends}` }; };
@@ -35,6 +35,8 @@ try {
   await migrateNotificationReliability({ queryInterface: sequelize.getQueryInterface(), models: notificationModels });
   const tenant = await Organization.create({ name: `Notification test ${suffix}`, slug: `notification-${suffix}`, country: 'AU', status: 'active' }); tenantIds.push(tenant.id);
   const otherTenant = await Organization.create({ name: `Notification other ${suffix}`, slug: `notification-other-${suffix}`, country: 'AU', status: 'active' }); tenantIds.push(otherTenant.id);
+  const plan = await ProductPlan.create({ code: `nr-${suffix}`, name: 'Isolated notification plan', product: 'civicpath', annualPriceAud: 0 }); planId = plan.id;
+  for (const organizationId of tenantIds) await Subscription.create({ organizationId, planId, planCode: plan.code, status: 'active', billingProvider: 'manual', startsAt: new Date(), endsAt: new Date(Date.now() + 86400000) });
   const makeUser = (organizationId, role, name) => User.create({ organizationId, email: `${name}-${suffix}@example.invalid`, firstName: 'Test', lastName: name, passwordHash: 'test-only-not-a-login', role, status: 'active' });
   const admin = await makeUser(tenant.id, 'org_admin', 'admin'); const member = await makeUser(tenant.id, 'contributor', 'member'); const peer = await makeUser(tenant.id, 'contributor', 'peer'); const executive = await makeUser(tenant.id, 'executive', 'exec'); const other = await makeUser(otherTenant.id, 'contributor', 'other');
   const project = await CivicProject.create({ organizationId: tenant.id, ownerId: admin.id, name: 'Notification test project' });
@@ -88,9 +90,10 @@ try {
     await ReliableNotificationDelivery.destroy({ where: { organizationId: tenantIds } }); await NotificationOutbox.destroy({ where: { organizationId: tenantIds } });
     await NotificationPreference.destroy({ where: { organizationId: tenantIds } }); await OrganizationNotificationPolicy.destroy({ where: { organizationId: tenantIds } });
     await AuditLog.destroy({ where: { organizationId: tenantIds }, force: true }); await CollaborationNotification.destroy({ where: { organizationId: tenantIds }, force: true });
-    await CivicProject.destroy({ where: { organizationId: tenantIds }, force: true }); await User.destroy({ where: { organizationId: tenantIds }, force: true }); await Organization.destroy({ where: { id: tenantIds }, force: true });
+    await CivicProject.destroy({ where: { organizationId: tenantIds }, force: true }); await User.destroy({ where: { organizationId: tenantIds }, force: true }); await Subscription.destroy({ where: { organizationId: tenantIds }, force: true }); await Organization.destroy({ where: { id: tenantIds }, force: true });
   }
   if (feedbackHashes.length) await NotificationFeedbackEvent.destroy({ where: { eventHash: feedbackHashes } });
   if (suppressedHashes.length) await NotificationRecipientSuppression.destroy({ where: { recipientHash: suppressedHashes } });
+  if (planId) await ProductPlan.destroy({ where: { id: planId }, force: true });
   await sequelize.close();
 }

@@ -156,7 +156,7 @@ def backup(args):
                     '--hex-blob', '--skip-lock-tables', '--skip-add-locks', '--skip-add-drop-table', '--skip-add-drop-database',
                     '--skip-disable-keys', '--skip-triggers', '--skip-routines', '--skip-events', '--no-tablespaces',
                     '--set-gtid-purged=OFF', '--no-create-db', '--skip-comments', '--skip-dump-date', '--skip-extended-insert',
-                    '--column-statistics=0', '--connect-timeout=5', args.db_name]
+                    '--column-statistics=0', args.db_name]
             # Pipeline: clear SQL never reaches disk. All stderr is suppressed, never echoed.
             p1 = subprocess.Popen(dump, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=command_env(), pass_fds=tuple(ACTIVE_FDS)); processes.append(p1)
             p2 = subprocess.Popen(['gzip', '-c'], stdin=p1.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL); processes.append(p2); p1.stdout.close()
@@ -249,7 +249,11 @@ def validate_sql(path):
     with open(path, encoding='utf8') as handle:
         for statement in sql_statements(handle):
             commands += 1
-            upper = statement.upper()
+            # Governed column identifiers such as `event` are not SQL commands.
+            # Only plain safe identifiers are removed for keyword checks; command
+            # structure and cross-schema/client-command checks use the original SQL.
+            unquoted_commands = re.sub(r'`[A-Za-z][A-Za-z0-9_]*`', ' ', statement)
+            upper = unquoted_commands.upper()
             require('\\' not in statement and '.' not in re.sub(r'\b\d+\.\d+\b', '', statement), 'Qualified schema or client commands prohibited')
             require(not re.search(r'\b(DROP|TRUNCATE|GRANT|REVOKE|DEFINER|OUTFILE|INFILE|LOAD|CALL|PREPARE|EXECUTE|GLOBAL|DATABASE|SCHEMA|FUNCTION|PROCEDURE|TRIGGER|EVENT|VIEW)\b', upper),
                     'Unsupported or destructive SQL prohibited')

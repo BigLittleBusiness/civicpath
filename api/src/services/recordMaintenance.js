@@ -203,7 +203,12 @@ export function createMaintenanceService({ sequelize, models, Archive, audit }) 
       if (kind === 'actions' && operation !== 'edit') await record.update({ isActive: operation === 'restore' ? state.previousIsActive !== false : false }, { transaction });
       await state.update(stateChanges, { transaction });
       await audit(req, { entityType: `maintenance_${kind.replace(/-/g, '_')}`, entityId: id, action: operation === 'edit' ? 'updated' : operation === 'archive' ? 'archived' : 'restored', metadata: { fields: Object.keys(changes), version: stateChanges.version, ...(operation === 'archive' ? { reason: body.reason.trim() } : {}) }, transaction });
-      return serialize(organizationId, user, kind, record, state, transaction);
+      // MySQL DATETIME precision can truncate Sequelize's in-memory milliseconds.
+      // Return the committed representation, not a timestamp that the next save
+      // would immediately reject despite the correct monotonic version.
+      const persistedRecord = await find(descriptor(kind).model, organizationId, id, transaction);
+      if (!persistedRecord) fail(503, 'The saved record could not be confirmed; no change was committed.');
+      return serialize(organizationId, user, kind, persistedRecord, state, transaction);
     });
   }
   async function list(req, kind) {

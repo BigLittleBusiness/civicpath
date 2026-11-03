@@ -31,7 +31,7 @@ function SubscriptionSummary({ current, pricing, stripeLinks }) {
   </div>;
 }
 
-export function Customer360Drawer({ detail, onClose, onRefresh, onStepUp }) {
+export function Customer360Drawer({ detail, onClose, onRefresh, onStepUp, renderLifecycle }) {
   const [tab, setTab] = useState(drawerTabs[0]);
   const [note, setNote] = useState(''); const [contact, setContact] = useState({ name: '', email: '', title: '', contactType: 'primary' }); const [stateReason, setStateReason] = useState(''); const [addingContact, setAddingContact] = useState(false);
   const [billing, setBilling] = useState(null); const [billingLoading, setBillingLoading] = useState(false); const [newPlan, setNewPlan] = useState(''); const [cancelWhen, setCancelWhen] = useState('period_end'); const [cancelReason, setCancelReason] = useState(''); const [refundOpen, setRefundOpen] = useState(null); const [refundNotes, setRefundNotes] = useState({});
@@ -109,6 +109,7 @@ export function Customer360Drawer({ detail, onClose, onRefresh, onStepUp }) {
           </section>
           <section className="drawer-section"><h4>Recent activity</h4>{[...recentActivity, ...cases].length ? <div className="drawer-timeline">{[...recentActivity, ...cases].sort((a, b) => new Date(b.createdAt || b.updatedAt) - new Date(a.createdAt || a.updatedAt)).slice(0, 15).map((item, index) => <div key={item.id || index}><p>{item.action ? item.action.replaceAll('_', ' ') : `Support case: ${item.title}`}</p><small>{formatDateTime(item.createdAt || item.updatedAt)}</small></div>)}</div> : <div className="drawer-empty">No recorded activity yet.</div>}</section>
         </>}
+        {renderLifecycle && renderLifecycle(customer)}
       </div>
     </aside>
   </>;
