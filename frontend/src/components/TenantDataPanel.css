@@ -1,0 +1,19 @@
+.tenant-data-panel { min-width: 0; }
+.tenant-data-panel h4 { margin: 1.6rem 0 .6rem; font-size: 1.05rem; }
+.tenant-data-panel p { line-height: 1.65; overflow-wrap: anywhere; }
+.tenant-data-guardrail, .tenant-data-notice { padding: 1rem; border-radius: 12px; background: #edf5f1; border: 1px solid #9bbfaf; margin-top: 1rem; color: #163133; }
+.tenant-data-form { display: grid; gap: 1rem; max-width: 760px; }
+.tenant-data-form label, .tenant-data-panel > label { display: grid; gap: .4rem; font-weight: 600; }
+.tenant-data-form input:not([type="checkbox"]), .tenant-data-form select, .tenant-data-form textarea, .tenant-data-panel > label select { border: 1px solid #718b83; padding: .7rem; border-radius: 6px; width: 100%; max-width: 100%; box-sizing: border-box; font: inherit; background: #fff; color: #163133; }
+.tenant-data-form textarea { min-height: 100px; resize: vertical; }
+.tenant-data-form button { justify-self: start; }
+.tenant-data-records { list-style: none; padding: 0; margin: 1rem 0; }
+.tenant-data-records li { display: flex; gap: 1rem; align-items: center; justify-content: space-between; padding: .9rem 0; border-bottom: 1px solid #d6e0db; min-width: 0; overflow-wrap: anywhere; }
+.tenant-data-records span, .tenant-data-records small { display: block; margin-top: .3rem; }
+.tenant-data-records button { flex-shrink: 0; }
+.tenant-data-footnote { color: #3f5a50; font-size: .85rem; }
+.tenant-data-form .tenant-data-check { display: flex; align-items: flex-start; font-weight: 400; gap: .6rem; }
+.tenant-data-check input { width: 18px; height: 18px; flex-shrink: 0; }
+.tenant-data-panel :is(button, input, select, textarea):focus-visible { outline: 3px solid #0d6a55; outline-offset: 3px; }
+.tenant-data-panel button:disabled { opacity: .6; cursor: not-allowed; }
+@media (max-width: 640px) { .tenant-data-records li { flex-direction: column; align-items: stretch; } .tenant-data-form button { width: 100%; } }
