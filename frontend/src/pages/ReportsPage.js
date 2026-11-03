@@ -1,10 +1,44 @@
-import React from 'react';
-import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { readinessProfile } from '../lib/demoData';
-import { ChartCard } from '../components/ChartCard';
-import { Icon } from '../components/Icon';
+import React, { useEffect, useRef, useState } from 'react';
+import { useAuth } from '../features/AuthContext';
+import { api } from '../lib/api';
+import { ReportHistoryPanel } from '../components/ReportHistoryPanel';
 
-const progressData = [{ month: 'Jul', priority: 2, ready: 0 }, { month: 'Aug', priority: 3, ready: 1 }, { month: 'Sep', priority: 3, ready: 1 }, { month: 'Oct', priority: 4, ready: 2 }, { month: 'Nov', priority: 5, ready: 2 }, { month: 'Dec', priority: 5, ready: 2 }];
-const riskData = [{ band: 'Low', value: 1, color: '#0D6A55' }, { band: 'Medium', value: 2, color: '#CD7C4E' }, { band: 'High', value: 2, color: '#b85d4f' }];
-export default function ReportsPage() { return <main className="page-content reports-page"><section className="report-heading"><div><p className="page-intro">Decision-ready evidence from the live portfolio. Exportable, meeting-ready and clear about what needs attention.</p><h2>Portfolio intelligence</h2></div><div><button className="secondary-button" type="button"><Icon name="external" size={15}/> Download PDF brief</button><button className="primary-button" type="button"><Icon name="report" size={15}/> Create report</button></div></section><section className="report-pulse"><article><p>Projects ready to fund</p><strong>2 <span>/ 5</span></strong><i><b style={{ width: '40%' }}/></i></article><article><p>Funding confidence</p><strong>72<span>%</span></strong><i><b style={{ width: '72%' }}/></i></article><article><p>Decision blockers</p><strong>3</strong><small>Require review within 30 days</small></article><article><p>Evidence coverage</p><strong>68<span>%</span></strong><small>Across core portfolio fields</small></article></section><section className="dashboard-grid reports-chart-grid"><ChartCard eyebrow="Portfolio trajectory" title="Projects progressing through the pathway"><div className="chart-box tall"><ResponsiveContainer width="100%" height="100%"><LineChart data={progressData} margin={{ top: 15, right: 12, left: -25, bottom: 0 }}><CartesianGrid stroke="#D8E2DF" vertical={false} strokeDasharray="2 4"/><XAxis dataKey="month" axisLine={false} tickLine={false}/><YAxis allowDecimals={false} axisLine={false} tickLine={false}/><Tooltip/><Legend iconType="circle" iconSize={8}/><Line type="monotone" name="Priority projects" dataKey="priority" stroke="#163133" strokeWidth={2.4} dot={{ r: 3 }}/><Line type="monotone" name="Funding-ready" dataKey="ready" stroke="#0D6A55" strokeWidth={2.4} dot={{ r: 3 }}/></LineChart></ResponsiveContainer></div></ChartCard><ChartCard eyebrow="Delivery confidence" title="Readiness profile"><div className="profile-list">{readinessProfile.map((item) => <div key={item.metric}><span>{item.metric}</span><i><b style={{ width: `${item.score}%` }}/></i><strong>{item.score}%</strong></div>)}</div></ChartCard></section><section className="dashboard-grid report-bottom-grid"><ChartCard eyebrow="Risk view" title="Where attention is needed"><div className="chart-box medium"><ResponsiveContainer width="100%" height="100%"><BarChart data={riskData} margin={{ top: 10, right: 10, left: -24, bottom: 0 }}><CartesianGrid stroke="#D8E2DF" vertical={false} strokeDasharray="2 4"/><XAxis dataKey="band" axisLine={false} tickLine={false}/><YAxis allowDecimals={false} axisLine={false} tickLine={false}/><Tooltip/><Bar dataKey="value" radius={[5,5,0,0]}>{riskData.map((item) => <Cell key={item.band} fill={item.color}/>)}</Bar></BarChart></ResponsiveContainer></div></ChartCard><section className="brief-card"><p className="card-eyebrow">Executive brief / September</p><h3>Portfolio conversations made useful.</h3><p>The next Executive review should focus on the workforce housing decision, the livestock precinct funding case and the early learning centre claims pack.</p><button type="button">Preview briefing note <Icon name="arrow" size={15}/></button></section></section></main>; }
-
+const readers = ['org_admin', 'portfolio_manager', 'executive'];
+const message = (error) => error.response?.status === 404 ? 'Reporting endpoints are not available. Ask your administrator to complete reporting integration.' : error.response?.data?.error || 'Reporting selections could not be loaded. Retry or contact your administrator.';
+export default function ReportsPage() {
+  const { user } = useAuth(); const allowed = readers.includes(user?.role);
+  const [strategies, setStrategies] = useState([]); const [strategyId, setStrategyId] = useState(''); const [periods, setPeriods] = useState([]); const [periodId, setPeriodId] = useState('');
+  const [strategyPage, setStrategyPage] = useState(null); const [periodPage, setPeriodPage] = useState(null); const [loading, setLoading] = useState(false); const [periodLoading, setPeriodLoading] = useState(false); const [moreLoading, setMoreLoading] = useState(false); const [error, setError] = useState(''); const [retryKey, setRetryKey] = useState(0);
+  const periodGeneration = useRef(0); const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    if (!allowed) return undefined;
+    const controller = new AbortController(); let current = true; setLoading(true); setError(''); setStrategyId(''); setPeriodId('');
+    api.get('/reports/strategies', { signal: controller.signal, params: { limit: 50 } }).then((response) => { if (!current) return; const rows = response.data.data || []; setStrategies(rows); setStrategyPage(response.data.pagination); setStrategyId(rows.find((s) => s.status === 'active')?.id || rows[0]?.id || ''); }).catch((err) => { if (current) { setError(message(err)); setStrategies([]); } }).finally(() => { if (current) setLoading(false); });
+    return () => { current = false; controller.abort(); };
+  }, [allowed, user?.organizationId, retryKey]);
+  useEffect(() => {
+    const counter = periodGeneration; const key = ++counter.current; const controller = new AbortController(); setPeriods([]); setPeriodId(''); setPeriodPage(null); setMoreLoading(false);
+    if (!strategyId || !allowed) { setPeriodLoading(false); return () => controller.abort(); }
+    setPeriodLoading(true); setError('');
+    api.get(`/reports/strategies/${strategyId}/periods`, { signal: controller.signal, params: { limit: 50 } }).then((response) => { if (key !== periodGeneration.current) return; const rows = response.data.data || []; setPeriods(rows); setPeriodPage(response.data.pagination); setPeriodId(rows.find((p) => p.status === 'open')?.id || rows[0]?.id || ''); }).catch((err) => { if (key === periodGeneration.current && !controller.signal.aborted) setError(message(err)); }).finally(() => { if (key === periodGeneration.current) setPeriodLoading(false); });
+    return () => { ++counter.current; controller.abort(); };
+  }, [strategyId, allowed]);
+  const more = async (type) => {
+    const page = type === 'strategies' ? strategyPage : periodPage; const key = periodGeneration.current; setMoreLoading(true); setError('');
+    try {
+      const response = await api.get(type === 'strategies' ? '/reports/strategies' : `/reports/strategies/${strategyId}/periods`, { params: { limit: 50, offset: page.offset + page.limit } });
+      if (!mounted.current || key !== periodGeneration.current) return;
+      if (type === 'strategies') { setStrategies((current) => [...new Map([...current, ...response.data.data].map((r) => [r.id, r])).values()]); setStrategyPage(response.data.pagination); }
+      else { setPeriods((current) => [...new Map([...current, ...response.data.data].map((r) => [r.id, r])).values()]); setPeriodPage(response.data.pagination); }
+    } catch (err) { if (mounted.current && key === periodGeneration.current) setError(message(err)); }
+    finally { if (mounted.current && key === periodGeneration.current) setMoreLoading(false); }
+  };
+  if (!allowed) return <main className="page-content reports-page"><h2>Strategy reporting</h2><p className="report-empty">Reports are available to organisation administrators, portfolio managers and executives. Ask your administrator if you need reporting access.</p></main>;
+  return <main className="page-content reports-page"><section className="report-heading"><div><p className="page-intro">Live strategy delivery information and immutable recorded report snapshots. No demonstration metrics, synthetic trend lines or formal approval claims.</p><h2>Strategy reporting</h2></div></section>
+    {loading && <p role="status">Loading council strategies…</p>}{periodLoading && <p role="status">Loading reporting periods…</p>}{error && <div className="report-error" role="alert"><p>{error}</p><button className="secondary-button" type="button" onClick={() => setRetryKey((key) => key + 1)}>Retry selections</button></div>}
+    {!loading && !strategies.length && !error && <p className="report-empty">No strategy has been recorded for this council. An organisation administrator or portfolio manager can create a strategy and reporting periods in Strategy Delivery.</p>}
+    {!!strategies.length && <div className="reporting-selectors"><label>Strategy<select value={strategyId} onChange={(event) => { setPeriodId(''); setStrategyId(event.target.value); }} disabled={loading || moreLoading}>{strategies.map((s) => <option value={s.id} key={s.id}>{s.name} ({s.status})</option>)}</select></label>{strategyPage?.hasMore && <button className="secondary-button" type="button" disabled={moreLoading} onClick={() => more('strategies')}>Load more strategies</button>}<label>Reporting period<select value={periodId} onChange={(event) => setPeriodId(event.target.value)} disabled={periodLoading || !periods.length || moreLoading}>{!periods.length && <option value="">{periodLoading ? 'Loading periods…' : 'No reporting periods'}</option>}{periods.map((p) => <option value={p.id} key={p.id}>{p.label} ({p.status})</option>)}</select></label>{periodPage?.hasMore && <button className="secondary-button" type="button" disabled={moreLoading} onClick={() => more('periods')}>Load older periods</button>}</div>}
+    <ReportHistoryPanel strategyId={strategyId} periodId={periodLoading ? '' : periodId}/>
+  </main>;
+}
