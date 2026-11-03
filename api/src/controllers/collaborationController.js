@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { Op } from 'sequelize';
 import {
   ActionDependency,
   ActionFundingPosition,
@@ -30,6 +31,7 @@ import {
 } from '../models/index.js';
 import { sequelize } from '../config/database.js';
 import { recordAudit } from '../services/audit.js';
+import { assertWriter, assertHandoverRequest, handoverTransition, requestTransition, quarterlyTransition, quarterlyMutation, lockedMutation, handleIntegrityError, assertOpenPack, assertPackOwner, assertOutcome, packTransition, ReviewIntegrityError } from '../services/reviewIntegrity.js';
 
 const RESOURCE_TYPES = ['action', 'project', 'decision', 'dependency', 'funding_room', 'review_pack', 'quarterly_update'];
 const PACK_ITEM_TYPES = ['action', 'project', 'dependency', 'risk', 'decision', 'funding_position', 'partner_commitment', 'quarterly_update'];
@@ -37,11 +39,11 @@ const MANAGER_ROLES = ['org_admin', 'portfolio_manager'];
 const participantSchema = Joi.object({ userId: Joi.string().uuid().required(), role: Joi.string().valid('accountable', 'contributor', 'reviewer', 'approver', 'informed', 'responsible', 'consulted').required() });
 const threadSchema = Joi.object({ title: Joi.string().trim().max(240).allow('', null), body: Joi.string().trim().min(1).max(6000).required(), mentionUserIds: Joi.array().items(Joi.string().uuid()).max(12).default([]) });
 const commentSchema = Joi.object({ body: Joi.string().trim().min(1).max(6000).required(), mentionUserIds: Joi.array().items(Joi.string().uuid()).max(12).default([]) });
-const requestSchema = Joi.object({ requestType: Joi.string().valid('update', 'evidence', 'review', 'decision_input', 'handover').required(), title: Joi.string().trim().max(240).required(), prompt: Joi.string().max(6000).allow('', null), requestedFromUserId: Joi.string().uuid().required(), dueDate: Joi.date().iso().allow(null) });
+const requestSchema = Joi.object({ requestType: Joi.string().valid('update', 'evidence', 'review', 'decision_input').required(), title: Joi.string().trim().min(1).max(240).required(), prompt: Joi.string().max(6000).allow('', null), requestedFromUserId: Joi.string().uuid().required(), dueDate: Joi.date().iso().allow(null) });
 const requestUpdateSchema = Joi.object({ status: Joi.string().valid('open', 'submitted', 'changes_requested', 'complete', 'declined').required(), response: Joi.string().max(6000).allow('', null) });
 const handoverSchema = Joi.object({ requestedToUserId: Joi.string().uuid().required(), detail: Joi.string().max(8000).allow('', null), dueDate: Joi.date().iso().allow(null), raci: Joi.object({ responsibleUserId: Joi.string().uuid().allow(null), accountableUserId: Joi.string().uuid().allow(null), consultedUserIds: Joi.array().items(Joi.string().uuid()).max(12).default([]), informedUserIds: Joi.array().items(Joi.string().uuid()).max(12).default([]) }).default({}) });
 const handoverResponseSchema = Joi.object({ handoverStatus: Joi.string().valid('accepted', 'clarification_requested', 'revised_date_proposed', 'declined').required(), response: Joi.string().max(8000).allow('', null), proposedDueDate: Joi.date().iso().allow(null) });
-const updateWorkflowSchema = Joi.object({ workflowStatus: Joi.string().valid('draft', 'submitted_for_review', 'changes_requested', 'endorsed', 'included_in_report').required(), reviewRequestedFromUserId: Joi.string().uuid().allow(null), reviewComment: Joi.string().max(6000).allow('', null) });
+const updateWorkflowSchema = Joi.object({ expectedVersion: Joi.number().strict().integer().min(1).max(Number.MAX_SAFE_INTEGER).required(), workflowStatus: Joi.string().valid('draft', 'submitted_for_review', 'changes_requested', 'endorsed', 'included_in_report').required(), reviewRequestedFromUserId: Joi.string().uuid().allow(null), reviewComment: Joi.string().max(6000).allow('', null) });
 const commitmentSchema = Joi.object({ stakeholderId: Joi.string().uuid().allow(null), ownerId: Joi.string().uuid().allow(null), contactName: Joi.string().max(180).allow('', null), contactRole: Joi.string().max(180).allow('', null), contributionType: Joi.string().valid('funding', 'land', 'data', 'advocacy', 'approval', 'co_delivery', 'introduction', 'other').default('other'), contribution: Joi.string().max(8000).required(), dueDate: Joi.date().iso().allow(null), status: Joi.string().valid('not_started', 'in_progress', 'confirmed', 'complete', 'at_risk', 'declined').default('not_started'), evidenceNote: Joi.string().max(8000).allow('', null), sourceUrl: Joi.string().uri().allow('', null) });
 const fundingRoomSchema = Joi.object({ fundingPositionId: Joi.string().uuid().allow(null), ownerId: Joi.string().uuid().allow(null), name: Joi.string().max(240).required(), purpose: Joi.string().max(8000).allow('', null), stage: Joi.string().valid('planning', 'eligibility', 'evidence', 'finance_review', 'executive_review', 'submitted', 'outcome', 'closed').default('planning'), dueDate: Joi.date().iso().allow(null), status: Joi.string().valid('active', 'on_hold', 'complete', 'not_proceeding').default('active') });
 const checkpointSchema = Joi.object({ ownerId: Joi.string().uuid().allow(null), checkpointType: Joi.string().valid('eligibility', 'evidence', 'finance', 'partner_commitment', 'internal_review', 'submission', 'outcome').required(), title: Joi.string().max(240).required(), dueDate: Joi.date().iso().allow(null), status: Joi.string().valid('not_started', 'in_progress', 'complete', 'blocked').default('not_started'), note: Joi.string().max(8000).allow('', null) });
@@ -117,11 +119,12 @@ export async function getActionCollaboration(req, res, next) {
       UserWatch.findAll({ where: { organizationId, resourceType: 'action', resourceId: action.id, isActive: true }, attributes: ['userId', 'deliveryPreference'] }),
     ]);
     return res.json({ data: { participants: participants.map(plain), threads: threads.map(plain), requests: requests.map(plain), activities: activities.map(plain), commitments: commitments.map(plain), engagementPlans: engagementPlans.map(plain), fundingRooms: fundingRooms.map(plain), watching: watches.some((item) => item.userId === req.auth.sub), watcherCount: watches.length } });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function addActionParticipant(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(participantSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
     const action = await StrategyAction.findOne({ where: { id: req.params.actionId, organizationId } });
@@ -137,11 +140,12 @@ export async function addActionParticipant(req, res, next) {
       return result;
     });
     return res.status(created ? 201 : 200).json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function createActionThread(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(threadSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
     const action = await StrategyAction.findOne({ where: { id: req.params.actionId, organizationId } });
@@ -157,11 +161,12 @@ export async function createActionThread(req, res, next) {
       return created;
     });
     return res.status(201).json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function createThreadComment(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(commentSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
     const thread = await CollaborationThread.findOne({ where: { id: req.params.threadId, organizationId } });
@@ -177,16 +182,18 @@ export async function createThreadComment(req, res, next) {
       return created;
     });
     return res.status(201).json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function createActionRequest(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(requestSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
     const action = await StrategyAction.findOne({ where: { id: req.params.actionId, organizationId } });
     if (!action) return res.status(404).json({ error: 'Strategy action not found.' });
     const recipient = await requireActiveUser(organizationId, value.requestedFromUserId, res, 'request recipient'); if (!recipient) return;
+    if (!['org_admin', 'portfolio_manager', 'contributor'].includes(recipient.role)) return res.status(422).json({ error: 'The request recipient must have a write role; executives are read-only.' });
     const record = await sequelize.transaction(async (transaction) => {
       const created = await CollaborationRequest.create({ ...value, organizationId, resourceType: 'action', resourceId: action.id, requestedByUserId: req.auth.sub }, { transaction });
       await Promise.all([
@@ -197,105 +204,93 @@ export async function createActionRequest(req, res, next) {
       return created;
     });
     return res.status(201).json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function updateCollaborationRequest(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(requestUpdateSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
-    const record = await CollaborationRequest.findOne({ where: { id: req.params.requestId, organizationId } });
-    if (!record) return res.status(404).json({ error: 'Collaboration request not found.' });
-    if (!isManager(req) && record.requestedFromUserId !== req.auth.sub) return res.status(403).json({ error: 'Only the requested Council member or a workspace manager can update this request.' });
-    const completedAt = ['complete', 'declined'].includes(value.status) ? new Date() : null;
-    await sequelize.transaction(async (transaction) => {
-      await record.update({ ...value, completedAt }, { transaction });
-      await Promise.all([
-        activity({ organizationId, resourceType: record.resourceType, resourceId: record.resourceId, actorId: req.auth.sub, activityType: 'request_updated', summary: `${record.title} marked ${value.status.replace(/_/g, ' ')}.`, metadata: { requestId: record.id, status: value.status }, transaction }),
-        notify({ organizationId, userIds: [record.requestedByUserId], actorId: req.auth.sub, resourceType: record.resourceType, resourceId: record.resourceId, notificationType: 'request', title: 'A collaboration request was updated', detail: record.title, transaction }),
-        audit(req, 'collaboration_request', record.id, 'updated', { status: value.status }, transaction),
-      ]);
-    });
+    const record = await lockedMutation({ sequelize, Model: CollaborationRequest, where: { id: req.params.requestId, organizationId }, mutate: async (record, transaction) => {
+      await record.update(requestTransition(req.auth, record, value), { transaction });
+      await activity({ organizationId, resourceType: record.resourceType, resourceId: record.resourceId, actorId: req.auth.sub, activityType: 'request_updated', summary: `${record.title} marked ${value.status.replace(/_/g, ' ')}.`, metadata: { requestId: record.id, status: value.status }, transaction });
+      await notify({ organizationId, userIds: [record.requestedByUserId, record.requestedFromUserId], actorId: req.auth.sub, resourceType: record.resourceType, resourceId: record.resourceId, notificationType: 'request', title: 'A collaboration request was updated', detail: record.title, transaction });
+      await audit(req, 'collaboration_request', record.id, 'updated', { status: value.status }, transaction);
+      return record;
+    } });
     return res.json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function createDependencyHandover(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(handoverSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
-    const dependency = await ActionDependency.findOne({ where: { id: req.params.dependencyId, organizationId } });
-    if (!dependency) return res.status(404).json({ error: 'Dependency not found.' });
     const recipient = await requireActiveUser(organizationId, value.requestedToUserId, res, 'receiving owner'); if (!recipient) return;
+    if (!['org_admin', 'portfolio_manager', 'contributor'].includes(recipient.role)) return res.status(422).json({ error: 'The receiving owner must have a write role; executives are read-only.' });
     if (recipient.id === req.auth.sub) return res.status(422).json({ error: 'Choose another Council user to receive this handover.' });
     const raci = { responsibleUserId: null, accountableUserId: null, consultedUserIds: [], informedUserIds: [], ...(value.raci || {}) };
     for (const userId of [raci.responsibleUserId, raci.accountableUserId, ...raci.consultedUserIds, ...raci.informedUserIds].filter(Boolean)) if (!await requireActiveUser(organizationId, userId, res, 'RACI participant')) return;
-    await sequelize.transaction(async (transaction) => {
-      await dependency.update({ handoverRequestedBy: req.auth.sub, handoverRequestedTo: recipient.id, handoverStatus: 'requested', handoverResponse: value.detail || null, dueDate: value.dueDate || dependency.dueDate, raci }, { transaction });
-      await Promise.all([
-        activity({ organizationId, resourceType: 'dependency', resourceId: dependency.id, actorId: req.auth.sub, activityType: 'handover_requested', summary: 'A cross-team handover was requested.', metadata: { recipientId: recipient.id }, transaction }),
-        notify({ organizationId, userIds: [recipient.id], actorId: req.auth.sub, resourceType: 'dependency', resourceId: dependency.id, notificationType: 'handover', title: 'A dependency handover needs your response', detail: dependency.detail || null, transaction }),
-        audit(req, 'action_dependency', dependency.id, 'handover_requested', { recipientId: recipient.id }, transaction),
-      ]);
-    });
+    const dependency = await lockedMutation({ sequelize, Model: ActionDependency, where: { id: req.params.dependencyId, organizationId }, mutate: async (dependency, transaction) => {
+      assertHandoverRequest(req.auth, dependency);
+      await dependency.update({ handoverRequestedBy: req.auth.sub, handoverRequestedTo: recipient.id, handoverStatus: 'requested', handoverResponse: value.detail || null, dueDate: value.dueDate || dependency.dueDate, proposedDueDate: null, raci }, { transaction });
+      await activity({ organizationId, resourceType: 'dependency', resourceId: dependency.id, actorId: req.auth.sub, activityType: 'handover_requested', summary: 'A cross-team handover was requested.', metadata: { recipientId: recipient.id }, transaction });
+      await notify({ organizationId, userIds: [recipient.id], actorId: req.auth.sub, resourceType: 'dependency', resourceId: dependency.id, notificationType: 'handover', title: 'A dependency handover needs your response', detail: dependency.detail || null, transaction });
+      await audit(req, 'action_dependency', dependency.id, 'handover_requested', { recipientId: recipient.id }, transaction);
+      return dependency;
+    } });
     return res.json({ data: plain(dependency) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function respondDependencyHandover(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(handoverResponseSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
-    const dependency = await ActionDependency.findOne({ where: { id: req.params.dependencyId, organizationId } });
-    if (!dependency) return res.status(404).json({ error: 'Dependency not found.' });
-    if (!isManager(req) && dependency.handoverRequestedTo !== req.auth.sub) return res.status(403).json({ error: 'Only the nominated receiving owner or a workspace manager can respond to this handover.' });
-    const patch = { handoverStatus: value.handoverStatus, handoverResponse: value.response || null, proposedDueDate: value.proposedDueDate || null };
-    if (value.handoverStatus === 'accepted') patch.ownerId = dependency.handoverRequestedTo;
-    await sequelize.transaction(async (transaction) => {
+    const dependency = await lockedMutation({ sequelize, Model: ActionDependency, where: { id: req.params.dependencyId, organizationId }, mutate: async (dependency, transaction) => {
+      const patch = handoverTransition(req.auth, dependency, value);
+      if (!await activeUser(organizationId, dependency.handoverRequestedTo)) throw new ReviewIntegrityError(422, 'The nominated receiving owner is no longer active.');
       await dependency.update(patch, { transaction });
-      await Promise.all([
-        activity({ organizationId, resourceType: 'dependency', resourceId: dependency.id, actorId: req.auth.sub, activityType: 'handover_responded', summary: `Handover ${value.handoverStatus.replace(/_/g, ' ')}.`, metadata: { status: value.handoverStatus }, transaction }),
-        notify({ organizationId, userIds: [dependency.handoverRequestedBy], actorId: req.auth.sub, resourceType: 'dependency', resourceId: dependency.id, notificationType: 'handover', title: 'A dependency handover was updated', detail: value.handoverStatus.replace(/_/g, ' '), transaction }),
-        audit(req, 'action_dependency', dependency.id, 'handover_responded', { status: value.handoverStatus }, transaction),
-      ]);
-    });
+      await activity({ organizationId, resourceType: 'dependency', resourceId: dependency.id, actorId: req.auth.sub, activityType: 'handover_responded', summary: `Handover ${value.handoverStatus.replace(/_/g, ' ')}.`, metadata: { status: value.handoverStatus }, transaction });
+      await notify({ organizationId, userIds: [dependency.handoverRequestedBy], actorId: req.auth.sub, resourceType: 'dependency', resourceId: dependency.id, notificationType: 'handover', title: 'A dependency handover was updated', detail: value.handoverStatus.replace(/_/g, ' '), transaction });
+      await audit(req, 'action_dependency', dependency.id, 'handover_responded', { status: value.handoverStatus }, transaction);
+      return dependency;
+    } });
     return res.json({ data: plain(dependency) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function updateQuarterlyWorkflow(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(updateWorkflowSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
-    const record = await QuarterlyActionUpdate.findOne({ where: { id: req.params.updateId, organizationId }, include: [{ model: StrategyAction, attributes: ['id', 'title', 'ownerId'] }] });
-    if (!record) return res.status(404).json({ error: 'Quarterly update not found.' });
-    const actionOwner = record.StrategyAction?.ownerId;
-    const canSubmit = req.auth.sub === record.submittedBy || req.auth.sub === actionOwner || isManager(req);
-    const canReview = isManager(req) || req.auth.sub === record.reviewRequestedFromUserId;
-    if (value.workflowStatus === 'submitted_for_review' && !canSubmit) return res.status(403).json({ error: 'Only the submitting contributor, action owner or workspace manager can submit this update for review.' });
-    if (['changes_requested', 'endorsed'].includes(value.workflowStatus) && !canReview) return res.status(403).json({ error: 'Only the nominated reviewer or a workspace manager can review this update.' });
-    if (value.workflowStatus === 'included_in_report' && !isManager(req)) return res.status(403).json({ error: 'Only a workspace manager can include an update in the quarterly report.' });
-    if (value.workflowStatus === 'submitted_for_review' && !value.reviewRequestedFromUserId) return res.status(422).json({ error: 'Choose an active reviewer before submitting this update.' });
-    if (value.reviewRequestedFromUserId && !await requireActiveUser(organizationId, value.reviewRequestedFromUserId, res, 'reviewer')) return;
-    const patch = { workflowStatus: value.workflowStatus, reviewComment: value.reviewComment || null };
-    if (value.workflowStatus === 'submitted_for_review') patch.reviewRequestedFromUserId = value.reviewRequestedFromUserId;
-    if (['changes_requested', 'endorsed', 'included_in_report'].includes(value.workflowStatus)) { patch.reviewedBy = req.auth.sub; patch.reviewedAt = new Date(); }
-    if (value.workflowStatus === 'included_in_report') patch.includedInReportAt = new Date();
-    const recipients = value.workflowStatus === 'submitted_for_review' ? [value.reviewRequestedFromUserId] : [record.submittedBy];
-    await sequelize.transaction(async (transaction) => {
+    // Preflight only supplies identifiers; approval/version/ownership are rechecked under lock.
+    const existing = await QuarterlyActionUpdate.findOne({ where: { id: req.params.updateId, organizationId }, attributes: ['id', 'actionId', 'reportingPeriodId'] });
+    if (!existing) return res.status(404).json({ error: 'Quarterly update not found.' });
+    if (value.workflowStatus === 'submitted_for_review') {
+      const reviewer = value.reviewRequestedFromUserId && await activeUser(organizationId, value.reviewRequestedFromUserId);
+      if (!reviewer || !['org_admin', 'portfolio_manager', 'contributor'].includes(reviewer.role)) return res.status(422).json({ error: 'Choose an active Council reviewer with a write role; executives are read-only.' });
+    }
+    const record = await quarterlyMutation({ sequelize, Period: QuarterlyReportingPeriod, Action: StrategyAction, Update: QuarterlyActionUpdate, organizationId, periodId: existing.reportingPeriodId, actionId: existing.actionId, mutate: async ({ record, action, transaction }) => {
+      if (!record || record.id !== existing.id) throw new ReviewIntegrityError(409, 'The quarterly update changed. Refresh before continuing.');
+      const patch = quarterlyTransition({ auth: req.auth, record, action, value });
       await record.update(patch, { transaction });
-      await Promise.all([
-        activity({ organizationId, resourceType: 'quarterly_update', resourceId: record.id, actorId: req.auth.sub, activityType: 'quarterly_workflow_updated', summary: `Quarterly update marked ${value.workflowStatus.replace(/_/g, ' ')}.`, metadata: { actionId: record.actionId, status: value.workflowStatus }, transaction }),
-        notify({ organizationId, userIds: recipients, actorId: req.auth.sub, resourceType: 'quarterly_update', resourceId: record.id, notificationType: value.workflowStatus === 'submitted_for_review' ? 'review_requested' : 'request', title: 'A quarterly update workflow changed', detail: record.StrategyAction?.title || null, transaction }),
-        audit(req, 'quarterly_action_update', record.id, 'workflow_updated', { workflowStatus: value.workflowStatus }, transaction),
-      ]);
-    });
+      await activity({ organizationId, resourceType: 'quarterly_update', resourceId: record.id, actorId: req.auth.sub, activityType: 'quarterly_workflow_updated', summary: `Quarterly update marked ${value.workflowStatus.replace(/_/g, ' ')}.`, metadata: { actionId: record.actionId, status: value.workflowStatus, version: record.version }, transaction });
+      await notify({ organizationId, userIds: value.workflowStatus === 'submitted_for_review' ? [value.reviewRequestedFromUserId] : [record.submittedBy], actorId: req.auth.sub, resourceType: 'quarterly_update', resourceId: record.id, notificationType: value.workflowStatus === 'submitted_for_review' ? 'review_requested' : 'request', title: 'A quarterly update workflow changed', detail: action.title, transaction });
+      await audit(req, 'quarterly_action_update', record.id, 'workflow_updated', { workflowStatus: value.workflowStatus, version: record.version }, transaction);
+      return record;
+    } });
     return res.json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function createPartnerCommitment(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(commitmentSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
     const action = await StrategyAction.findOne({ where: { id: req.params.actionId, organizationId } });
@@ -311,11 +306,12 @@ export async function createPartnerCommitment(req, res, next) {
       return created;
     });
     return res.status(201).json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function createFundingRoom(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(fundingRoomSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
     const action = await StrategyAction.findOne({ where: { id: req.params.actionId, organizationId } });
@@ -331,11 +327,12 @@ export async function createFundingRoom(req, res, next) {
       return created;
     });
     return res.status(201).json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function createFundingCheckpoint(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(checkpointSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
     const room = await FundingCollaborationRoom.findOne({ where: { id: req.params.roomId, organizationId } });
@@ -350,11 +347,12 @@ export async function createFundingCheckpoint(req, res, next) {
       return created;
     });
     return res.status(201).json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function createEngagementPlan(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(engagementSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
     const action = await StrategyAction.findOne({ where: { id: req.params.actionId, organizationId } });
@@ -369,11 +367,12 @@ export async function createEngagementPlan(req, res, next) {
       return created;
     });
     return res.status(201).json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function createDecisionPack(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(decisionPackSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
     const source = await ensureResource(organizationId, value.sourceType, value.sourceId);
@@ -391,7 +390,7 @@ export async function createDecisionPack(req, res, next) {
       return created;
     });
     return res.status(201).json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function getDecisionPack(req, res, next) {
@@ -406,11 +405,12 @@ export async function getDecisionPack(req, res, next) {
       CollaborationActivity.findAll({ where: { organizationId, resourceType: 'decision', resourceId: record.id }, order: [['createdAt', 'DESC']], limit: 30 }),
     ]);
     return res.json({ data: { ...plain(record), participants: participants.map(plain), requests: requests.map(plain), threads: threads.map(plain), activities: activityRows.map(plain) } });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function createReviewPack(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(reviewPackSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
     if (value.strategyId && !await StrategicPlan.findOne({ where: { id: value.strategyId, organizationId } })) return res.status(422).json({ error: 'The selected strategy is not available in this Council workspace.' });
@@ -427,7 +427,7 @@ export async function createReviewPack(req, res, next) {
       return created;
     });
     return res.status(201).json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function listReviewPacks(req, res, next) {
@@ -436,7 +436,7 @@ export async function listReviewPacks(req, res, next) {
     if (req.query.strategyId) where.strategyId = req.query.strategyId;
     const records = await ReviewPack.findAll({ where, include: [{ model: User, as: 'reviewPackOwner', attributes: ['id', 'firstName', 'lastName'] }, { model: ReviewPackItem, attributes: ['id'] }], order: [['meetingAt', 'DESC'], ['createdAt', 'DESC']], limit: 60 });
     return res.json({ data: records.map(plain) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function getReviewPack(req, res, next) {
@@ -446,54 +446,71 @@ export async function getReviewPack(req, res, next) {
     if (!record) return res.status(404).json({ error: 'Review Pack not found.' });
     const [participants, threads, activities] = await Promise.all([
       CollaborationParticipant.findAll({ where: { organizationId, resourceType: 'review_pack', resourceId: record.id }, include: [{ model: User, as: 'participantUser', attributes: ['id', 'firstName', 'lastName', 'role'] }] }),
-      CollaborationThread.findAll({ where: { organizationId, resourceType: 'review_pack', resourceId: record.id }, include: [{ model: User, as: 'threadAuthor', attributes: ['id', 'firstName', 'lastName'] }], order: [['createdAt', 'DESC']] }),
+      CollaborationThread.findAll({ where: { organizationId, resourceType: 'review_pack', resourceId: record.id }, include: [{ model: User, as: 'threadAuthor', attributes: ['id', 'firstName', 'lastName'] }], order: [['createdAt', 'DESC']], limit: 40 }),
       CollaborationActivity.findAll({ where: { organizationId, resourceType: 'review_pack', resourceId: record.id }, order: [['createdAt', 'DESC']], limit: 40 }),
     ]);
-    return res.json({ data: { ...plain(record), participants: participants.map(plain), threads: threads.map(plain), activities: activities.map(plain) } });
-  } catch (error) { return next(error); }
+    const detail = plain(record);
+    // One tenant-scoped query per resource type, never an N+1 per pack item.
+    const references = [...(detail.ReviewPackItems || []), ...(detail.ReviewPackOutcomes || [])];
+    const models = { action: StrategyAction, project: CivicProject, dependency: ActionDependency, risk: StrategyRiskIssue, decision: StrategyDecision, funding_position: ActionFundingPosition, partner_commitment: PartnerCommitment, quarterly_update: QuarterlyActionUpdate };
+    const previews = {};
+    await Promise.all(Object.entries(models).map(async ([type, Model]) => {
+      const ids = [...new Set(references.filter((item) => item.resourceType === type && item.resourceId).map((item) => item.resourceId))];
+      if (!ids.length) return;
+      const fields = ['id', 'strategyId', 'actionId', 'name', 'title', 'actionCode', 'detail', 'status', 'workflowStatus', 'decisionStatus', 'sourceName', 'contribution', 'achievements', 'evidenceSummary', 'riskSummary', 'decisionsRequired', 'nextQuarterCommitments', 'version', 'updatedAt'].filter((field) => Model.getAttributes()[field]);
+      const rows = await Model.findAll({ where: { organizationId, id: ids }, attributes: fields });
+      for (const row of rows) previews[`${type}:${row.id}`] = plain(row);
+    }));
+    const withPreview = (item) => ({ ...item, sourcePreview: previews[`${item.resourceType}:${item.resourceId}`] || null });
+    return res.json({ data: { ...detail, sourceMode: 'live_preview', sourceNotice: 'Live preview — not a frozen meeting snapshot. Source records can change after this pack is closed; the recorded summary, questions and outcomes remain the meeting trail.', ReviewPackItems: (detail.ReviewPackItems || []).sort((a, b) => a.sortOrder - b.sortOrder).map(withPreview), ReviewPackOutcomes: (detail.ReviewPackOutcomes || []).map(withPreview), participants: participants.map(plain), threads: threads.map(plain), activities: activities.map(plain) } });
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function createReviewPackQuestion(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(reviewQuestionSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
-    const pack = await ReviewPack.findOne({ where: { id: req.params.reviewPackId, organizationId } });
-    if (!pack) return res.status(404).json({ error: 'Review Pack not found.' });
-    const record = await sequelize.transaction(async (transaction) => {
+    const record = await lockedMutation({ sequelize, Model: ReviewPack, where: { id: req.params.reviewPackId, organizationId }, mutate: async (pack, transaction) => {
+      assertOpenPack(pack);
+      if (await ReviewPackQuestion.count({ where: { organizationId, reviewPackId: pack.id }, transaction }) >= 100) throw new ReviewIntegrityError(422, 'A Review Pack supports at most 100 questions.');
       const created = await ReviewPackQuestion.create({ organizationId, reviewPackId: pack.id, askedBy: req.auth.sub, question: value.question }, { transaction });
-      await Promise.all([
-        activity({ organizationId, resourceType: 'review_pack', resourceId: pack.id, actorId: req.auth.sub, activityType: 'review_question_added', summary: 'A pre-reading question was added.', transaction }),
-        audit(req, 'review_pack_question', created.id, 'created', { reviewPackId: pack.id }, transaction),
-      ]);
+      await activity({ organizationId, resourceType: 'review_pack', resourceId: pack.id, actorId: req.auth.sub, activityType: 'review_question_added', summary: 'A pre-reading question was added.', transaction });
+      await audit(req, 'review_pack_question', created.id, 'created', { reviewPackId: pack.id }, transaction);
       return created;
-    });
+    } });
     return res.status(201).json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function createReviewPackOutcome(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(reviewOutcomeSchema, req.body, res); if (!value) return;
+    assertOutcome(value);
     const organizationId = req.tenant.organizationId;
-    const pack = await ReviewPack.findOne({ where: { id: req.params.reviewPackId, organizationId } });
-    if (!pack) return res.status(404).json({ error: 'Review Pack not found.' });
-    if (value.ownerId && !await requireActiveUser(organizationId, value.ownerId, res, 'outcome owner')) return;
+    if (value.ownerId) {
+      const owner = await requireActiveUser(organizationId, value.ownerId, res, 'outcome owner'); if (!owner) return;
+      if (!['org_admin', 'portfolio_manager', 'contributor'].includes(owner.role)) return res.status(422).json({ error: 'Meeting outcome owners must have a write role; executives are read-only.' });
+    }
     if (value.resourceType && !await ensureResource(organizationId, value.resourceType, value.resourceId)) return res.status(422).json({ error: 'The linked outcome record is not available in this Council workspace.' });
-    const record = await sequelize.transaction(async (transaction) => {
+    const record = await lockedMutation({ sequelize, Model: ReviewPack, where: { id: req.params.reviewPackId, organizationId }, mutate: async (pack, transaction) => {
+      assertPackOwner(req.auth, pack);
+      if (pack.status !== 'ready') throw new ReviewIntegrityError(409, 'Mark the pack ready before recording meeting outcomes. Closed packs are read-only.');
+      if (await ReviewPackOutcome.count({ where: { organizationId, reviewPackId: pack.id }, transaction }) >= 100) throw new ReviewIntegrityError(422, 'A Review Pack supports at most 100 outcomes.');
       const created = await ReviewPackOutcome.create({ ...value, organizationId, reviewPackId: pack.id, recordedBy: req.auth.sub }, { transaction });
-      await Promise.all([
-        activity({ organizationId, resourceType: 'review_pack', resourceId: pack.id, actorId: req.auth.sub, activityType: 'review_outcome_recorded', summary: value.outcome, metadata: { outcomeType: value.outcomeType, resourceType: value.resourceType, resourceId: value.resourceId }, transaction }),
-        value.ownerId ? notify({ organizationId, userIds: [value.ownerId], actorId: req.auth.sub, resourceType: 'review_pack', resourceId: pack.id, notificationType: 'assignment', title: 'A Review Pack follow-up was assigned', detail: value.outcome, transaction }) : Promise.resolve(),
-        audit(req, 'review_pack_outcome', created.id, 'created', { reviewPackId: pack.id, outcomeType: value.outcomeType }, transaction),
-      ]);
+      await activity({ organizationId, resourceType: 'review_pack', resourceId: pack.id, actorId: req.auth.sub, activityType: 'review_outcome_recorded', summary: value.outcome, metadata: { outcomeType: value.outcomeType, resourceType: value.resourceType, resourceId: value.resourceId }, transaction });
+      if (value.ownerId) await notify({ organizationId, userIds: [value.ownerId], actorId: req.auth.sub, resourceType: 'review_pack', resourceId: pack.id, notificationType: 'assignment', title: 'A Review Pack follow-up was assigned', detail: value.outcome, transaction });
+      await audit(req, 'review_pack_outcome', created.id, 'created', { reviewPackId: pack.id, outcomeType: value.outcomeType }, transaction);
       return created;
-    });
+    } });
     return res.status(201).json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function createWatch(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const value = validate(watchSchema, req.body, res); if (!value) return;
     const organizationId = req.tenant.organizationId;
     if (!await ensureResource(organizationId, value.resourceType, value.resourceId)) return res.status(422).json({ error: 'The selected record is not available in this Council workspace.' });
@@ -504,11 +521,12 @@ export async function createWatch(req, res, next) {
       return result;
     });
     return res.status(201).json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function removeWatch(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const record = await UserWatch.findOne({ where: { id: req.params.watchId, organizationId: req.tenant.organizationId, userId: req.auth.sub } });
     if (!record) return res.status(404).json({ error: 'Watch record not found.' });
     await sequelize.transaction(async (transaction) => {
@@ -516,27 +534,67 @@ export async function removeWatch(req, res, next) {
       await audit(req, 'user_watch', record.id, 'disabled', {}, transaction);
     });
     return res.status(204).end();
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function getMyCollaborationWork(req, res, next) {
   try {
     const organizationId = req.tenant.organizationId;
-    const [requests, notifications, watches, reviewing] = await Promise.all([
-      CollaborationRequest.findAll({ where: { organizationId, requestedFromUserId: req.auth.sub, status: ['open', 'changes_requested'] }, include: [{ model: User, as: 'requester', attributes: ['id', 'firstName', 'lastName'] }], order: [['dueDate', 'ASC']] }),
+    const [requests, notifications, watches, reviewing, handovers, authoredUpdates, ownedOutcomes] = await Promise.all([
+      CollaborationRequest.findAll({ where: { organizationId, [Op.or]: [{ requestedFromUserId: req.auth.sub, status: ['open', 'changes_requested'] }, { requestedByUserId: req.auth.sub, status: 'submitted' }] }, include: [{ model: User, as: 'requester', attributes: ['id', 'firstName', 'lastName'] }], order: [['dueDate', 'ASC']], limit: 60 }),
       CollaborationNotification.findAll({ where: { organizationId, userId: req.auth.sub }, order: [['readAt', 'ASC'], ['createdAt', 'DESC']], limit: 50 }),
-      UserWatch.findAll({ where: { organizationId, userId: req.auth.sub, isActive: true }, order: [['createdAt', 'DESC']] }),
-      QuarterlyActionUpdate.findAll({ where: { organizationId, reviewRequestedFromUserId: req.auth.sub, workflowStatus: 'submitted_for_review' }, include: [{ model: StrategyAction, attributes: ['id', 'title', 'actionCode'] }, { model: User, as: 'updateSubmittedBy', attributes: ['id', 'firstName', 'lastName'] }], order: [['submittedAt', 'ASC']] }),
+      UserWatch.findAll({ where: { organizationId, userId: req.auth.sub, isActive: true }, order: [['createdAt', 'DESC']], limit: 60 }),
+      QuarterlyActionUpdate.findAll({ where: { organizationId, ...(isManager(req) ? {} : { reviewRequestedFromUserId: req.auth.sub }), workflowStatus: ['submitted_for_review', 'endorsed'] }, include: [{ model: StrategyAction, attributes: ['id', 'title', 'actionCode', 'ownerId'] }, { model: User, as: 'updateSubmittedBy', attributes: ['id', 'firstName', 'lastName'] }], order: [['submittedAt', 'ASC']], limit: 60 }),
+      ActionDependency.findAll({ where: { organizationId, [Op.or]: [{ handoverRequestedTo: req.auth.sub, handoverStatus: 'requested' }, { handoverRequestedBy: req.auth.sub, handoverStatus: ['clarification_requested', 'revised_date_proposed', 'declined'] }] }, order: [['dueDate', 'ASC']], limit: 60 }),
+      QuarterlyActionUpdate.findAll({ where: { organizationId, submittedBy: req.auth.sub }, include: [{ model: StrategyAction, attributes: ['id', 'title', 'actionCode', 'ownerId'] }], order: [['updatedAt', 'DESC']], limit: 60 }),
+      ReviewPackOutcome.findAll({ where: { organizationId, ownerId: req.auth.sub }, include: [{ model: ReviewPack, attributes: ['id', 'title', 'status'] }], order: [['dueDate', 'ASC']], limit: 60 }),
     ]);
-    return res.json({ data: { requests: requests.map(plain), notifications: notifications.map(plain), watches: watches.map(plain), reviews: reviewing.map(plain) } });
-  } catch (error) { return next(error); }
+    return res.json({ data: { requests: requests.map(plain), notifications: notifications.map(plain), watches: watches.map(plain), reviews: reviewing.map(plain), handovers: handovers.map(plain), authoredUpdates: authoredUpdates.map(plain), ownedOutcomes: ownedOutcomes.map(plain) } });
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
 
 export async function markNotificationRead(req, res, next) {
   try {
+    assertWriter(req.auth, req.tenant?.organizationId);
     const record = await CollaborationNotification.findOne({ where: { id: req.params.notificationId, organizationId: req.tenant.organizationId, userId: req.auth.sub } });
     if (!record) return res.status(404).json({ error: 'Notification not found.' });
     await record.update({ readAt: new Date() });
     return res.json({ data: plain(record) });
-  } catch (error) { return next(error); }
+  } catch (error) { return handleIntegrityError(error, res, next); }
+}
+
+export async function updateReviewPackStatus(req, res, next) {
+  try {
+    assertWriter(req.auth, req.tenant?.organizationId);
+    const value = validate(Joi.object({ status: Joi.string().valid('ready', 'completed', 'archived').required() }), req.body, res); if (!value) return;
+    const organizationId = req.tenant.organizationId;
+    const record = await lockedMutation({ sequelize, Model: ReviewPack, where: { id: req.params.reviewPackId, organizationId }, mutate: async (pack, transaction) => {
+      const unanswered = value.status === 'completed' ? await ReviewPackQuestion.count({ where: { organizationId, reviewPackId: pack.id, respondedAt: null }, transaction }) : 0;
+      const patch = packTransition(req.auth, pack, value.status, unanswered);
+      await pack.update(patch, { transaction });
+      await activity({ organizationId, resourceType: 'review_pack', resourceId: pack.id, actorId: req.auth.sub, activityType: 'review_pack_status_changed', summary: `Review Pack ${value.status}.`, transaction });
+      await audit(req, 'review_pack', pack.id, 'status_changed', { status: value.status, sourceMode: 'live_preview' }, transaction);
+      return pack;
+    } });
+    return res.json({ data: plain(record) });
+  } catch (error) { return handleIntegrityError(error, res, next); }
+}
+
+export async function answerReviewPackQuestion(req, res, next) {
+  try {
+    assertWriter(req.auth, req.tenant?.organizationId);
+    const value = validate(Joi.object({ response: Joi.string().trim().min(1).max(12000).required() }), req.body, res); if (!value) return;
+    const organizationId = req.tenant.organizationId;
+    const record = await lockedMutation({ sequelize, Model: ReviewPack, where: { id: req.params.reviewPackId, organizationId }, mutate: async (pack, transaction) => {
+      assertOpenPack(pack); assertPackOwner(req.auth, pack);
+      const question = await ReviewPackQuestion.findOne({ where: { id: req.params.questionId, organizationId, reviewPackId: pack.id }, transaction, lock: transaction.LOCK.UPDATE });
+      if (!question) throw new ReviewIntegrityError(404, 'Review Pack question not found.');
+      if (question.respondedAt) throw new ReviewIntegrityError(409, 'This question already has a recorded answer. Add a new question to preserve the original trail.');
+      await question.update({ response: value.response, respondedBy: req.auth.sub, respondedAt: new Date() }, { transaction });
+      await activity({ organizationId, resourceType: 'review_pack', resourceId: pack.id, actorId: req.auth.sub, activityType: 'review_question_answered', summary: 'A pre-reading question was answered.', transaction });
+      await audit(req, 'review_pack_question', question.id, 'answered', { reviewPackId: pack.id }, transaction);
+      return question;
+    } });
+    return res.json({ data: plain(record) });
+  } catch (error) { return handleIntegrityError(error, res, next); }
 }
