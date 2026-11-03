@@ -2,7 +2,10 @@ import crypto from 'node:crypto';
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { brandedEmail, emailButton, escapeEmailHtml } from './emailBranding.js';
 import { getPulseRoutingSettings } from './pulseNotifications.js';
-import { NotificationDelivery } from '../models/index.js';
+import { NotificationDelivery, User, Organization } from '../models/index.js';
+import { ReliableNotificationDelivery, NotificationRecipientSuppression } from '../models/notificationReliability.js';
+import { sendSingleUseTransactionalEmail } from './notificationTransactional.js';
+import { recipientHash } from './notificationPolicy.js';
 
 const MAX_ATTEMPTS = 3;
 const inboundMailbox = () => Buffer.from('aGVsbG9AYmlnbGl0dGxlYnVzaW5lc3MuY29t', 'base64').toString('utf8');
@@ -12,7 +15,7 @@ function sourceAddress(config) {
 }
 
 function emailClient(config) {
-  return new SESClient({ region: config.awsRegion, credentials: { accessKeyId: config.awsAccessKeyId, secretAccessKey: config.awsSecretAccessKey } });
+  return new SESClient({ region: config.awsRegion, credentials: { accessKeyId: config.awsAccessKeyId, secretAccessKey: config.awsSecretAccessKey }, maxAttempts: 1 });
 }
 
 export function registrationReceiptMessage({ firstName, organisationName, planName, checkoutUrl }) {
@@ -72,26 +75,30 @@ export function councilInvitationMessage({ firstName, organizationName, role, in
 }
 
 export async function sendTransactionalEmail({ to, message, organizationId = null, userId = null, category = 'transactional' }) {
-  const config = await getPulseRoutingSettings({ includeSecrets: true });
-  let outcome;
-  if (!config.emailEnabled || !config.awsCredentialsConfigured || !config.fromEmail) outcome = { status: 'disabled' };
-  else {
-    try {
-      const response = await emailClient(config).send(new SendEmailCommand({
-        Source: sourceAddress(config),
-        ReplyToAddresses: config.replyToEmail ? [config.replyToEmail] : undefined,
-        Destination: { ToAddresses: [to] },
-        Message: { Subject: { Charset: 'UTF-8', Data: message.subject }, Body: { Text: { Charset: 'UTF-8', Data: message.text }, Html: { Charset: 'UTF-8', Data: message.html } } },
-      }));
-      outcome = { status: 'sent', providerReference: response.MessageId || '' };
-    } catch (error) {
-      outcome = { status: 'failed', error: String(error.message || error).slice(0, 1000) };
-    }
-  }
-  try {
-    await NotificationDelivery.create({ organizationId, userId, category, recipientHash: hashToken(String(to).trim().toLowerCase()), subject: message.subject, status: outcome.status, providerReference: outcome.providerReference || null, error: outcome.error || null, retryGuidance: outcome.status === 'sent' ? 'Delivered to the configured provider. Delivery beyond the provider is not guaranteed.' : outcome.status === 'disabled' ? 'Configure SES routing before sending a fresh message.' : 'Generate a fresh message only after the delivery configuration or recipient issue is resolved.' });
-  } catch (recordError) { console.error('[civicpath] notification delivery record failed', recordError); }
-  return outcome;
+  return sendSingleUseTransactionalEmail({ to, message, organizationId, userId, category }, {
+    configuration: () => getPulseRoutingSettings({ includeSecrets: true }),
+    async guard() {
+      if (await NotificationRecipientSuppression.findOne({ where: { recipientHash: recipientHash(to) } })) return 'recipient_suppressed';
+      if (!organizationId && !userId) return to === inboundMailbox() && category === 'transactional' ? null : 'invalid_recipient';
+      if (!organizationId || !userId) return 'invalid_recipient';
+      const [user, organization] = await Promise.all([User.findOne({ where: { id: userId, organizationId } }), Organization.findByPk(organizationId)]);
+      const invitation = ['workspace_invitation', 'workspace_invitation_resend', 'registration_checkout'].includes(category);
+      if (!user || !organization || !['active', 'trial'].includes(organization.status) || !(invitation ? ['invited', 'active'] : ['active']).includes(user.status) || recipientHash(user.email) !== recipientHash(to)) return 'inactive';
+      return null;
+    },
+    receipts: { start: (data) => ReliableNotificationDelivery.create(data), finish: (receipt, outcome) => receipt.update(outcome) },
+    async send({ config }) {
+      const client = emailClient(config);
+      try {
+        const response = await client.send(new SendEmailCommand({ Source: sourceAddress(config), Destination: { ToAddresses: [to] }, Message: { Subject: { Charset: 'UTF-8', Data: message.subject }, Body: { Text: { Charset: 'UTF-8', Data: message.text }, Html: { Charset: 'UTF-8', Data: message.html } } } }), { abortSignal: AbortSignal.timeout(15000) });
+        return { providerReference: response.MessageId };
+      } finally { client.destroy(); }
+    },
+    async report({ outcome, recipientHash: hash }) {
+      // Existing monitor compatibility: legacy 'sent' means provider accepted only.
+      await NotificationDelivery.create({ organizationId, userId, category, recipientHash: hash, subject: `CivicPath - ${category.replace(/_/g, ' ')}`, status: outcome.status === 'accepted' ? 'sent' : outcome.status === 'disabled' ? 'disabled' : 'failed', providerReference: outcome.providerReference || null, error: outcome.errorCode || null, retryGuidance: outcome.status === 'accepted' ? 'SES accepted the message. Delivery to the recipient inbox is not confirmed or guaranteed.' : 'No automatic replay. Regenerate through the original secure invitation, recovery or account flow after resolving configuration; uncertain outcomes may already have been accepted.' });
+    },
+  });
 }
 
 export async function notifyBillingOperations(message) {

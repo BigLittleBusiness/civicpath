@@ -1,0 +1,21 @@
+.notification-panel { background: #fff; border: 1px solid #d8e2df; border-radius: 12px; padding: clamp(16px, 3vw, 28px); color: #163133; margin: 16px 0; overflow-wrap: anywhere; }
+.notification-panel h2 { font-size: 1.35rem; margin: 0 0 12px; }
+.notification-panel h3 { font-size: 1.05rem; }
+.notification-panel p { line-height: 1.6; }
+.notification-heading { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.notification-panel fieldset { border: 1px solid #d8e2df; padding: 16px; margin: 16px 0; border-radius: 8px; min-width: 0; }
+.notification-panel legend { font-weight: 700; padding: 0 6px; }
+.notification-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 14px; margin: 16px 0; }
+.notification-fields label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
+.notification-panel input:not([type=checkbox]), .notification-panel select { width: 100%; padding: 10px; border: 1px solid #73857f; border-radius: 6px; background: #fff; color: #163133; }
+.notification-checkbox { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0; }
+.notification-checkbox input { flex: 0 0 auto; margin-top: 5px; }
+.notification-panel button { border: 1px solid #0d6a55; border-radius: 6px; background: #0d6a55; color: #fff; padding: 10px 16px; cursor: pointer; }
+.notification-panel button:disabled { opacity: .6; cursor: not-allowed; }
+.notification-panel :focus-visible { outline: 3px solid #cd7c4e; outline-offset: 3px; }
+.notification-panel [role=alert] { border-left: 4px solid #b33a3a; padding: 12px; background: #fff4f4; }
+.notification-notice { background: #f0f5f3; padding: 12px; border-radius: 6px; }
+.notification-list { list-style: none; padding: 0; margin: 16px 0; }
+.notification-list li { border: 1px solid #d8e2df; border-left: 4px solid #0d6a55; padding: 14px; margin: 12px 0; border-radius: 6px; }
+.notification-list li.notification-read { border-left-color: #73857f; background: #f8faf9; }
+@media (max-width: 480px) { .notification-heading button { width: 100%; } .notification-panel fieldset { padding: 12px; } }
