@@ -1,0 +1,165 @@
+import { organizationAccessDecision, sessionMatchesUser, subscriptionIsCurrent } from './tenantAccessPolicy.js';
+
+// Production dependencies are supplied by authController.js. Tests use an isolated
+// in-memory identity store, without importing environment configuration or DB models.
+export function createTenantAuthController({ jwt, Joi, bcrypt, User, AuditLog, Organization, ProductPlan, Subscription, env,
+  decryptConfiguration, encryptConfiguration, createTotpSecret, buildOtpauthUrl, createQrCode, verifyTotp,
+  createRecoveryCodes, hashRecoveryCodes, consumeRecoveryCode }) {
+  const loginSchema = Joi.object({ email: Joi.string().email().required(), password: Joi.string().min(8).required() });
+  const codeSchema = Joi.object({ code: Joi.string().trim().min(6).max(32).required() });
+  const stepUpSchema = Joi.object({ password: Joi.string().min(8).required(), code: Joi.string().trim().min(6).max(32).required() });
+  function sessionUser(user) {
+    return { id: user.id, organizationId: user.organizationId, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role, mfaEnabled: Boolean(user.mfaEnabled), mfaRequired: Boolean(user.mfaRequired) };
+  }
+  function rejectAccess(decision) {
+    const error = new Error(decision.error);
+    error.status = decision.status;
+    error.code = decision.code;
+    throw error;
+  }
+  async function accessState(user) {
+    const organisation = await Organization.findByPk(user.organizationId, { attributes: ['id', 'name', 'isDemo', 'status'] });
+    const decision = organizationAccessDecision(user, organisation, { audience: 'authentication' });
+    if (!decision.allowed) rejectAccess(decision);
+    const organisationFields = { organisationName: organisation.name, organisationIsDemo: Boolean(organisation.isDemo), organisationStatus: organisation.status, operationsOnly: decision.operationsOnly };
+    if (user.role === 'platform_admin') return { accessActive: false, subscriptionStatus: 'platform', ...organisationFields };
+    const subscription = await Subscription.findOne({ where: { organizationId: user.organizationId, status: 'active' }, include: [{ model: ProductPlan }], order: [['createdAt', 'DESC']] })
+      || await Subscription.findOne({ where: { organizationId: user.organizationId }, include: [{ model: ProductPlan }], order: [['createdAt', 'DESC']] });
+    return { accessActive: subscriptionIsCurrent(subscription), subscriptionStatus: subscription?.status || 'not_started', subscriptionPlanCode: subscription?.ProductPlan?.code || null, subscriptionEndsAt: subscription?.endsAt || null, ...organisationFields };
+  }
+  function cookieOptions() { return { httpOnly: true, secure: env.isProduction, sameSite: env.isProduction ? 'none' : 'lax', domain: env.cookieDomain, maxAge: 8 * 60 * 60 * 1000 }; }
+  function claims(user) { return { sub: user.id, organizationId: user.organizationId, role: user.role, sessionVersion: Number(user.sessionVersion) }; }
+  async function issueSession(res, user, elevatedAt = null) {
+    // Do not pick up a new sessionVersion after credentials were checked. Suspension,
+    // restoration and password resets must force a fresh authentication attempt.
+    const fresh = await User.findByPk(user.id);
+    if (!sessionMatchesUser(claims(user), fresh)) rejectAccess({ status: 401, error: 'Your session is no longer valid. Please sign in again.' });
+    await accessState(fresh);
+    const token = jwt.sign({ ...claims(user), scope: 'session', elevatedAt }, env.jwtSecret, { expiresIn: env.jwtExpiresIn, algorithm: 'HS256' });
+    res.cookie('civicpath_session', token, cookieOptions());
+    res.clearCookie('civicpath_mfa_pending', cookieOptions());
+  }
+  function issueMfaPending(res, user, purpose) {
+    const token = jwt.sign({ ...claims(user), scope: 'mfa_pending', purpose }, env.jwtSecret, { expiresIn: '10m', algorithm: 'HS256' });
+    // A new pending challenge must not leave an earlier full session usable.
+    res.clearCookie('civicpath_session', cookieOptions());
+    res.cookie('civicpath_mfa_pending', token, { ...cookieOptions(), maxAge: 10 * 60 * 1000 });
+  }
+  async function pendingMfaUser(req) {
+    const user = await User.findByPk(req.auth.sub);
+    if (!sessionMatchesUser(req.auth, user, { pending: true })) return null;
+    await accessState(user);
+    return user;
+  }
+  async function audit(user, action, req, metadata = {}) {
+    return AuditLog.create({ organizationId: user.organizationId, userId: user.id, entityType: 'authentication', entityId: user.id, action, metadata, ipAddress: req.ip }).catch(() => null);
+  }
+  async function verifyAuthenticator(user, code) {
+    const secret = user.mfaSecretEncrypted ? decryptConfiguration(user.mfaSecretEncrypted).secret : null;
+    if (secret && verifyTotp({ secret, code })) return { valid: true, usedRecovery: false };
+    const recovery = await consumeRecoveryCode(code, user.mfaRecoveryCodes || []);
+    if (recovery.valid) { await user.update({ mfaRecoveryCodes: recovery.remaining }); return { valid: true, usedRecovery: true }; }
+    return { valid: false, usedRecovery: false };
+  }
+  function failure(error, res, next) {
+    if ([401, 403].includes(error.status)) return res.status(error.status).json({ error: error.message, ...(error.code ? { code: error.code } : {}) });
+    return next(error);
+  }
+  async function login(req, res, next) {
+    try {
+      const { value, error } = loginSchema.validate(req.body);
+      if (error) return res.status(422).json({ error: error.message });
+      const user = await User.findOne({ where: { email: value.email.toLowerCase(), status: 'active' } });
+      if (!user || !(await bcrypt.compare(value.password, user.passwordHash))) {
+        if (user) await audit(user, 'auth_login_failed', req, { reason: 'invalid_password' });
+        return res.status(401).json({ error: 'Email or password is incorrect.' });
+      }
+      const access = await accessState(user);
+      if (user.role === 'platform_admin') {
+        const setupRequired = !user.mfaEnabled;
+        issueMfaPending(res, user, setupRequired ? 'setup' : 'login');
+        return res.json({ data: { mfaRequired: true, setupRequired, operationsOnly: true } });
+      }
+      if (!access.accessActive) return res.status(402).json({ error: 'This CivicPath workspace is not currently active. Complete checkout or ask your organisation administrator to review billing.', code: 'subscription_access_required', subscriptionStatus: access.subscriptionStatus });
+      await user.update({ lastLoginAt: new Date() });
+      await issueSession(res, user);
+      await audit(user, 'auth_login_success', req);
+      return res.json({ data: { user: sessionUser(user), ...access } });
+    } catch (error) { return failure(error, res, next); }
+  }
+  async function beginMfaSetup(req, res, next) {
+    try {
+      if (req.auth.purpose !== 'setup') return res.status(403).json({ error: 'Authenticator setup is not available for this session.' });
+      const user = await pendingMfaUser(req);
+      if (!user) return res.status(401).json({ error: 'Your MFA session is no longer valid. Please sign in again.' });
+      // Preserve the existing pending secret so setup retries do not invalidate a QR.
+      let base32 = !user.mfaEnabled && user.mfaSecretEncrypted ? decryptConfiguration(user.mfaSecretEncrypted).secret : null;
+      if (!base32) {
+        base32 = createTotpSecret({ issuer: env.mfaIssuer, accountName: user.email }).base32;
+        await user.update({ mfaRequired: true, mfaEnabled: false, mfaSecretEncrypted: encryptConfiguration({ secret: base32 }) });
+      }
+      const qrCodeDataUrl = await createQrCode(buildOtpauthUrl({ secret: base32, issuer: env.mfaIssuer, accountName: user.email }));
+      return res.json({ data: { qrCodeDataUrl, manualKey: base32, issuer: env.mfaIssuer, account: user.email } });
+    } catch (error) { return failure(error, res, next); }
+  }
+  function mfaPending(req, res) { return res.json({ data: { purpose: req.auth.purpose } }); }
+  async function confirmMfaSetup(req, res, next) {
+    try {
+      if (req.auth.purpose !== 'setup') return res.status(403).json({ error: 'Authenticator setup is not available for this session.' });
+      const { value, error } = codeSchema.validate(req.body);
+      if (error) return res.status(422).json({ error: error.message });
+      const user = await pendingMfaUser(req);
+      const secret = user?.mfaSecretEncrypted ? decryptConfiguration(user.mfaSecretEncrypted).secret : null;
+      if (!user || !secret || !verifyTotp({ secret, code: value.code })) return res.status(422).json({ error: 'That authenticator code could not be verified. Please try again.' });
+      const recoveryCodes = createRecoveryCodes();
+      await user.update({ mfaRequired: true, mfaEnabled: true, mfaRecoveryCodes: await hashRecoveryCodes(recoveryCodes), mfaEnrolledAt: new Date(), mfaLastVerifiedAt: new Date(), lastLoginAt: new Date() });
+      await issueSession(res, user);
+      await audit(user, 'mfa_enrolled', req);
+      return res.json({ data: { user: sessionUser(user), ...(await accessState(user)), recoveryCodes } });
+    } catch (error) { return failure(error, res, next); }
+  }
+  async function verifyMfaLogin(req, res, next) {
+    try {
+      if (req.auth.purpose !== 'login') return res.status(403).json({ error: 'Authenticator verification is not available for this session.' });
+      const { value, error } = codeSchema.validate(req.body);
+      if (error) return res.status(422).json({ error: error.message });
+      const user = await pendingMfaUser(req);
+      if (!user || !user.mfaEnabled || !(await verifyAuthenticator(user, value.code)).valid) {
+        if (user) await audit(user, 'auth_mfa_failed', req);
+        return res.status(401).json({ error: 'The authenticator or recovery code is not valid.' });
+      }
+      await user.update({ mfaLastVerifiedAt: new Date(), lastLoginAt: new Date() });
+      await issueSession(res, user);
+      await audit(user, 'auth_mfa_success', req);
+      return res.json({ data: { user: sessionUser(user), ...(await accessState(user)) } });
+    } catch (error) { return failure(error, res, next); }
+  }
+  async function stepUp(req, res, next) {
+    try {
+      const { value, error } = stepUpSchema.validate(req.body);
+      if (error) return res.status(422).json({ error: error.message });
+      const user = await User.findByPk(req.auth.sub);
+      if (!sessionMatchesUser(req.auth, user) || user.role !== 'platform_admin' || !(await bcrypt.compare(value.password, user.passwordHash)) || !(await verifyAuthenticator(user, value.code)).valid) {
+        if (user) await audit(user, 'privileged_reauth_failed', req);
+        return res.status(401).json({ error: 'Password or authenticator code is not valid.' });
+      }
+      await user.update({ mfaLastVerifiedAt: new Date() });
+      await issueSession(res, user, Date.now());
+      await audit(user, 'privileged_reauth_success', req);
+      return res.json({ data: { elevatedUntil: new Date(Date.now() + env.privilegedActionMinutes * 60 * 1000).toISOString() } });
+    } catch (error) { return failure(error, res, next); }
+  }
+  function logout(_req, res) {
+    res.clearCookie('civicpath_session', cookieOptions());
+    res.clearCookie('civicpath_mfa_pending', cookieOptions());
+    return res.status(204).send();
+  }
+  async function me(req, res, next) {
+    try {
+      const user = await User.findByPk(req.auth.sub);
+      if (!sessionMatchesUser(req.auth, user)) return res.status(401).json({ error: 'Your account is unavailable.' });
+      return res.json({ data: { user: sessionUser(user), ...(await accessState(user)) } });
+    } catch (error) { return failure(error, res, next); }
+  }
+  return { login, beginMfaSetup, mfaPending, confirmMfaSetup, verifyMfaLogin, stepUp, logout, me };
+}
